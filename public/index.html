@@ -2,41 +2,68 @@
 <html lang="id">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login - Smart Rental</title>
-    <style>
-        body { font-family: 'Segoe UI', sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; background: #e9ecef; }
-        .login-box { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); width: 300px; }
-        input { width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
-        button { width: 100%; padding: 10px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
-        button:hover { background: #0056b3; }
-    </style>
+    <link rel="stylesheet" href="main.css">
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
 </head>
 <body>
-    <div class="login-box">
-        <h2 style="text-align: center;">Smart Rental</h2>
-        <input type="text" id="user" placeholder="Username">
-        <input type="password" id="pass" placeholder="Password">
-        <button onclick="doLogin()">Masuk</button>
+    <div class="login-wrapper">
+        <div class="glass-panel login-box">
+            <div style="text-align: center; margin-bottom: 30px;">
+                <i class="ph ph-car-profile" style="font-size: 3rem; color: var(--primary);"></i>
+                <h2 style="margin-top: 10px;">Smart Rental</h2>
+                <p style="color: var(--text-muted);">IoT Monitoring System</p>
+            </div>
+
+            <div class="input-group">
+                <label>Username</label>
+                <input type="text" id="user" placeholder="Nama Pengguna" value="">
+            </div>
+
+            <div class="input-group">
+                <label>Password</label>
+                <input type="password" id="pass" placeholder="Kata Sandi" value="">
+            </div>
+
+            <button onclick="doLogin()" class="btn" style="width: 100%;">Masuk Sistem</button>
+            <p id="error-msg" style="color: var(--danger); text-align: center; margin-top: 15px; font-size: 0.9rem;"></p>
+        </div>
     </div>
 
     <script>
+        document.getElementById('pass').addEventListener('keypress', function (e) {
+            if (e.key === 'Enter') doLogin();
+        });
+
         async function doLogin() {
             const username = document.getElementById('user').value;
             const password = document.getElementById('pass').value;
+            const btn = document.querySelector('button');
+            const err = document.getElementById('error-msg');
 
-            const res = await fetch('/api/login', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username, password })
-            });
+            btn.innerText = "Memproses...";
+            err.innerText = "";
 
-            const data = await res.json();
-            if (data.token) {
-                localStorage.setItem('token', data.token);
-                if (data.role === 'ADMIN') window.location.href = '/admin.html';
-                else window.location.href = '/peminjam.html';
-            } else {
-                alert("Login gagal!");
+            try {
+                const res = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+
+                const data = await res.json();
+                if (data.token) {
+                    localStorage.setItem('token', data.token);
+                    if (data.role === 'ADMIN') window.location.href = '/admin.html';
+                    else window.location.href = '/peminjam.html';
+                } else {
+                    err.innerText = data.message || "Login Gagal";
+                    btn.innerText = "Masuk Sistem";
+                }
+            } catch (e) {
+                err.innerText = "Gagal terhubung ke server.";
+                btn.innerText = "Masuk Sistem";
             }
         }
     </script>

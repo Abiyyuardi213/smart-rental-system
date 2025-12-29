@@ -2,69 +2,391 @@
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <title>Admin Dashboard - Smart Rental</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Rental Admin</title>
+    <link rel="stylesheet" href="main.css">
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
     <script src="/socket.io/socket.io.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; background: #f0f2f5; }
-        h1 { color: #1c1e21; border-bottom: 2px solid #ddd; padding-bottom: 10px; }
-        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; margin-top: 20px; }
-        .car-card { background: white; padding: 20px; border-radius: 12px; border-top: 6px solid #007bff; box-shadow: 0 4px 12px rgba(0,0,0,0.08); transition: transform 0.2s; }
-        .car-card:hover { transform: translateY(-5px); }
-        .car-id { font-size: 1.4em; font-weight: bold; margin-bottom: 10px; color: #007bff; }
-        .info-label { font-weight: 600; color: #555; }
-        .speed-warning { color: #dc3545; font-weight: bold; animation: blink 1s infinite; }
-        .device-info { background: #e9ecef; padding: 5px 10px; border-radius: 6px; font-size: 0.85em; color: #495057; display: inline-block; margin-top: 10px; }
-        .alert-box { background: #fff3cd; color: #856404; padding: 10px; border-radius: 6px; margin-top: 10px; font-size: 0.9em; border: 1px solid #ffeeba; }
-        @keyframes blink { 50% { opacity: 0.5; } }
+        .tab-content { display: none; animation: fadeIn 0.4s; }
+        .tab-content.active { display: block; }
+        
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 2000; justify-content: center; align-items: center; backdrop-filter: blur(4px); }
+        .modal.active { display: flex; }
+        
+        /* Ensure SweetAlert is on top */
+        .swal2-container { z-index: 99999 !important; }
+
+        /* Tables */
+        .data-table { width: 100%; border-collapse: separate; border-spacing: 0; }
+        .data-table th, .data-table td { padding: 16px; text-align: left; border-bottom: 1px solid var(--border); }
+        .data-table th { background: #f1f5f9; color: var(--text-muted); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
+        .data-table tr:hover { background: #f8fafc; }
+        
+        .action-btn { background: white; border: 1px solid var(--border); padding: 8px; border-radius: 8px; color: var(--text-muted); cursor: pointer; transition: 0.2s; display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
+        .action-btn:hover { border-color: var(--primary); color: var(--primary); transform: translateY(-1px); box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
     </style>
 </head>
 <body>
-    <h1>🚗 Monitoring Armada Rental</h1>
-    <div id="car-list" class="grid">
+    
+    <!-- Floating Navbar -->
+    <nav class="floating-nav">
+        <div class="nav-brand">
+            <i class="ph ph-car-profile" style="font-size: 1.5rem;"></i> SmartRental
+        </div>
+        <div class="nav-links">
+            <button class="nav-item active" onclick="switchTab('monitoring')">Monitoring</button>
+            <button class="nav-item" onclick="switchTab('cars')">Armada</button>
+            <button class="nav-item" onclick="switchTab('rentals'); loadRentals()">Peminjaman <span id="pending-count" class="badge badge-danger" style="display:none; margin-left:5px; font-size:0.7em">0</span></button>
+        </div>
+        <div>
+           <button onclick="logout()" class="action-btn" style="border:none; background:transparent;" title="Logout"><i class="ph ph-sign-out" style="font-size:1.2rem; color: var(--danger)"></i></button>
+        </div>
+    </nav>
+
+    <div class="main-content">
+        
+        <!-- 1. MONITORING TAB -->
+        <div id="monitoring" class="tab-content active">
+            <!-- Stats -->
+            <div class="stats-row">
+                <div class="stat-card">
+                    <div class="stat-icon blue"><i class="ph ph-car"></i></div>
+                    <div class="stat-info"><h4><span id="total-cars">0</span></h4><p>Total Armada</p></div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon green"><i class="ph ph-check-circle"></i></div>
+                    <div class="stat-info"><h4><span id="ready-cars">0</span></h4><p>Tersedia</p></div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon red"><i class="ph ph-warning-circle"></i></div>
+                    <div class="stat-info"><h4><span id="alert-cars">0</span></h4><p>Alerts</p></div>
+                </div>
+            </div>
+
+            <!-- MAP -->
+            <div id="map" class="glass-panel" style="height: 400px; margin-bottom: 30px; border-radius: 16px; border:1px solid var(--border); z-index:1;"></div>
+
+            <div id="car-list" class="grid"></div>
         </div>
 
+        <!-- 2. MANAJEMEN MOBIL -->
+        <div id="cars" class="tab-content">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                <h2>Manajemen Armada</h2>
+                <button class="btn" onclick="openCarModal()">+ Tambah Mobil</button>
+            </div>
+            
+            <div class="glass-panel" style="padding: 0; border-radius: 16px; overflow:hidden; background:white; border:1px solid var(--border)">
+                <table class="data-table">
+                    <thead><tr><th>Nama Mobil</th><th>Plat Nomor</th><th>Device ID</th><th>Status</th><th>Aksi</th></tr></thead>
+                    <tbody id="cars-table-body"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 3. RENTAL REQUESTS -->
+        <div id="rentals" class="tab-content">
+            <h2 style="margin-bottom:20px;">Permintaan Peminjaman</h2>
+            <div class="glass-panel" style="padding: 0; border-radius: 16px; overflow:hidden; background:white; border:1px solid var(--border)">
+                <table class="data-table">
+                    <thead><tr><th>Peminjam</th><th>Kendaraan</th><th>Status</th><th>Waktu Request</th><th>Aksi</th></tr></thead>
+                    <tbody id="rentals-table-body">
+                         <tr><td colspan="5" style="text-align:center; padding:30px; color:var(--text-muted)">Memuat data...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- MODAL ADD/EDIT CAR -->
+    <div id="car-modal" class="modal">
+        <div class="login-box" style="position:relative; background:white; width:400px; max-width:90%">
+             <button onclick="document.getElementById('car-modal').classList.remove('active')" style="position:absolute; top:20px; right:20px; background:none; border:none; cursor:pointer;"><i class="ph ph-x" style="font-size:1.2rem;"></i></button>
+            <h2 style="margin-bottom: 20px;">Data Mobil Baru</h2>
+            <div class="input-group"><label>Nama Mobil</label><input type="text" id="car-name" placeholder="Contoh: Toyota Avanza"></div>
+            <div class="input-group"><label>Plat Nomor</label><input type="text" id="car-plate" placeholder="B 1234 ABC"></div>
+            <div class="input-group"><label>Device ID (IoT)</label><input type="text" id="car-device" placeholder="MOBIL_X"></div>
+            <div style="margin-top: 30px;">
+                <button onclick="saveCar()" class="btn" style="width:100%">Simpan Data</button>
+            </div>
+        </div>
+    </div>
+
     <script>
+        // --- AUTH & TABS ---
         const token = localStorage.getItem('token');
         if (!token) window.location.href = '/';
+        function logout() { localStorage.removeItem('token'); window.location.href = '/'; }
+        
+        function switchTab(id) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+            
+            document.getElementById(id).classList.add('active');
+            
+            // Set active nav item
+            const btns = document.querySelectorAll('.nav-item');
+            if(id === 'monitoring') btns[0].classList.add('active');
+            if(id === 'cars') btns[1].classList.add('active');
+            if(id === 'rentals') btns[2].classList.add('active');
 
-        // Hubungkan ke WebSocket
+            if(id === 'cars') loadCarsTable();
+            // Fix map size check
+            if(id === 'monitoring' && map) setTimeout(() => map.invalidateSize(), 300);
+        }
+
+        // --- MAP INIT ---
+        let map = L.map('map').setView([-6.2, 106.8], 10);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+        let markers = {};
+        let boundsInitialized = false;
+
+        // --- 1. MONITORING (WebSocket) ---
         const socket = io({ auth: { token } });
-
         socket.on('update_all_cars', (cars) => {
             const container = document.getElementById('car-list');
             container.innerHTML = '';
             
-            Object.values(cars).forEach(car => {
-                const isViolation = car.alert === "OUT_OF_BOUNDS" || car.speed > 100;
-                
-                const div = document.createElement('div');
-                div.className = 'car-card';
-                div.innerHTML = `
-                    <div class="car-id">${car.id}</div>
-                    <p><span class="info-label">Status:</span> ${car.status}</p>
-                    <p><span class="info-label">Kecepatan:</span> 
-                        <span class="${car.speed > 80 ? 'speed-warning' : ''}">${car.speed} km/jam</span>
-                    </p>
-                    <p><span class="info-label">Koordinat:</span> ${car.lat.toFixed(4)}, ${car.lng.toFixed(4)}</p>
-                    
-                    <div class="device-info">
-                        📱 <b>Perangkat Peminjam:</b><br>
-                        ${car.connectedDevice || "Menunggu Peminjam Login..."}
-                    </div>
+            let total = 0, ready = 0, alerts = 0;
+            const carArray = Object.values(cars);
+            total = carArray.length;
+            
+            let activeLatLngs = [];
 
-                    ${isViolation ? `
-                        <div class="alert-box">
-                            ⚠️ <b>PELANGGARAN:</b> ${car.alert === "OUT_OF_BOUNDS" ? 'Keluar Wilayah!' : 'Melebihi Kecepatan!'}
+            carArray.forEach(car => {
+                // --- MAP UPDATE ---
+                if (car.lat && car.lng) {
+                    const lat = parseFloat(car.lat);
+                    const lng = parseFloat(car.lng);
+                    activeLatLngs.push([lat, lng]);
+
+                    if (markers[car.id]) {
+                        markers[car.id].setLatLng([lat, lng]);
+                        markers[car.id].setPopupContent(`<b>${car.name}</b><br>Speed: ${car.speed} km/h`);
+                    } else {
+                        const marker = L.marker([lat, lng])
+                            .addTo(map)
+                            .bindPopup(`<b>${car.name}</b><br>Speed: ${car.speed} km/h`);
+                        markers[car.id] = marker;
+                    }
+                }
+
+                if(car.status === 'TERSEDIA') ready++;
+                if(car.alert === 'OUT_OF_BOUNDS' || car.isOverSpeed) alerts++;
+
+                let statusColor = '#94a3b8'; // gray
+                if(car.status === 'TERSEDIA') statusColor = 'var(--success)';
+                if(car.status === 'DISEWA') statusColor = 'var(--primary)';
+                if(car.alert === 'OUT_OF_BOUNDS') statusColor = 'var(--danger)';
+
+                const div = document.createElement('div');
+                div.className = 'monitor-card';
+                div.innerHTML = `
+                    <div class="monitor-header">
+                        <div>
+                            <div style="font-weight:700; font-size:1.1rem; color:var(--text-main)">${car.name || car.id}</div>
+                            <div style="color:var(--text-muted); font-size:0.8rem;">${car.plate}</div>
                         </div>
-                    ` : ''}
+                        <span class="badge" style="background:${statusColor}20; color:${statusColor}; border:1px solid ${statusColor}40">
+                            ${car.status}
+                        </span>
+                    </div>
+                    <div class="monitor-body">
+                        <div class="info-grid">
+                            <div class="info-item">
+                                <div class="info-label">Speed</div>
+                                <div class="info-val ${car.speed > 80 ? 'text-danger' : ''}">${car.speed} <small>km/h</small></div>
+                            </div>
+                            <div class="info-item">
+                                <div class="info-label">Signal</div>
+                                <div class="info-val" style="font-size:0.9rem; display:flex; align-items:center; gap:5px">
+                                    <i class="ph ph-wifi-high"></i> ${car.networkStatus || '4G'}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="device-badge">
+                            <i class="ph ph-device-mobile-camera" style="color:var(--primary)"></i>
+                            <span style="flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis" title="${car.connectedDevice}">
+                                ${car.connectedDevice || 'No Device Connected'}
+                            </span>
+                        </div>
+
+                         ${(car.alert === 'OUT_OF_BOUNDS' || car.speed > 100) ? `
+                            <div style="margin-top: 15px; padding: 10px; background: #fee2e2; border-radius: 8px; color: var(--danger); font-size: 0.85rem; display: flex; align-items: center; gap: 8px;">
+                                <i class="ph ph-warning-circle" style="font-size: 1.2rem;"></i>
+                                <b>PERINGATAN:</b> ${car.alert === 'OUT_OF_BOUNDS' ? 'Keluar Zona' : 'Overspeed'}
+                            </div>
+                        ` : ''}
+                    </div>
                 `;
                 container.appendChild(div);
             });
+
+            // Auto-Fit Map Logic
+            if (activeLatLngs.length > 0 && !boundsInitialized) {
+                const bounds = L.latLngBounds(activeLatLngs);
+                map.fitBounds(bounds, { padding: [50, 50], maxZoom: 15 });
+                boundsInitialized = true;
+            }
+
+            // Update Stats
+            document.getElementById('total-cars').innerText = total;
+            document.getElementById('ready-cars').innerText = ready;
+            document.getElementById('alert-cars').innerText = alerts;
         });
 
-        socket.on('critical_alert', (data) => {
-            console.warn("CRITICAL:", data.msg);
+        // Speed Log Notification
+        socket.on('speed_log_notification', (data) => {
+            // Optional: Show Toast
+            /*
+            const Toast = Swal.mixin({
+                toast: true, position: 'bottom-end', showConfirmButton: false, timer: 2000,
+                didOpen: (toast) => { toast.onmouseenter = Swal.stopTimer; toast.onmouseleave = Swal.resumeTimer; }
+            });
+            Toast.fire({
+                icon: 'info',
+                title: `${data.carId} (${data.speed} km/h)`
+            });
+            */
+            // Or just log to console as per request "tambahkan log"
+            console.log(`[SPEED LOG] ${data.time} - ${data.carId}: ${data.speed} km/h (User: ${data.user})`);
         });
+
+        // --- 2. CAR MANAGEMENT ---
+        async function loadCarsTable() {
+            try {
+                const res = await fetch('/api/cars', { headers: { 'Authorization': 'Bearer ' + token } });
+                const data = await res.json();
+                const tbody = document.getElementById('cars-table-body');
+                tbody.innerHTML = data.map(c => `
+                    <tr>
+                        <td><b>${c.name}</b></td>
+                        <td><span style="font-family:monospace; background:#e2e8f0; padding:2px 6px; border-radius:4px;">${c.plate_number}</span></td>
+                        <td>${c.device_id}</td>
+                        <td><span class="badge ${c.status === 'TERSEDIA' ? 'badge-success':'badge-warning'}">${c.status}</span></td>
+                        <td><button class="action-btn" onclick="deleteCar('${c.id}')" title="Hapus"><i class="ph ph-trash"></i></button></td>
+                    </tr>
+                `).join('');
+            } catch (e) { console.error(e); }
+        }
+
+        async function saveCar() {
+            const name = document.getElementById('car-name').value;
+            const plate_number = document.getElementById('car-plate').value;
+            const device_id = document.getElementById('car-device').value;
+            if(!name || !plate_number || !device_id) return alert("Lengkapi data!");
+
+            await fetch('/api/cars', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token},
+                body: JSON.stringify({ name, plate_number, device_id })
+            });
+            document.getElementById('car-modal').classList.remove('active');
+            loadCarsTable();
+        }
+
+        async function deleteCar(id) {
+            let confirmed = false;
+            // SWAL Fallback
+            if(typeof Swal !== 'undefined') {
+                const result = await Swal.fire({
+                    title: 'Hapus Mobil?', text: "Data tidak bisa dikembalikan.", icon: 'warning',
+                    showCancelButton: true, confirmButtonColor: '#ef4444', cancelButtonColor: '#64748b', confirmButtonText: 'Ya, Hapus'
+                });
+                confirmed = result.isConfirmed;
+            } else {
+                confirmed = confirm('Hapus mobil ini?');
+            }
+
+            if(confirmed) {
+                await fetch(`/api/cars/${id}`, { method: 'DELETE', headers: { 'Authorization': 'Bearer ' + token } });
+                loadCarsTable();
+                if(typeof Swal !== 'undefined') Swal.fire('Terhapus!', '', 'success');
+            }
+        }
+
+        // --- 3. RENTALS ---
+        async function loadRentals() {
+            try {
+                const res = await fetch('/api/rentals/pending', { headers: { 'Authorization': 'Bearer ' + token } });
+                const data = await res.json();
+                const tbody = document.getElementById('rentals-table-body');
+                
+                // Pending Counter
+                const counter = document.getElementById('pending-count');
+                if(data.length > 0) { counter.innerText = data.length; counter.style.display = 'inline-block'; }
+                else { counter.style.display = 'none'; }
+
+                if(data.length === 0) {
+                     tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 40px; color:var(--text-muted)">Tidak ada permintaan baru saat ini.</td></tr>';
+                     return;
+                }
+                tbody.innerHTML = data.map(r => `
+                    <tr>
+                        <td><b>${r.username || 'Unknown'}</b></td>
+                        <td>${r.name} <br> <small style="color:var(--text-muted)">${r.plate_number}</small></td>
+                        <td><span class="badge badge-warning">${r.status}</span></td>
+                        <td>${new Date(r.created_at).toLocaleString()}</td>
+                        <td>
+                            <button class="action-btn" style="color:var(--success); border-color:var(--success)" onclick="processRental('${r.id}', 'APPROVE')"><i class="ph ph-check"></i> Terima</button>
+                            <button class="action-btn" style="color:var(--danger); border-color:var(--danger)" onclick="processRental('${r.id}', 'REJECT')"><i class="ph ph-x"></i> Tolak</button>
+                        </td>
+                    </tr>
+                `).join('');
+            } catch(e) { console.error(e); }
+        }
+
+        async function processRental(id, action) {
+            const verb = action === 'APPROVE' ? 'menerima' : 'menolak';
+            let confirmed = false;
+
+            if(typeof Swal !== 'undefined') {
+                 const result = await Swal.fire({
+                    title: 'Konfirmasi',
+                    text: `Anda yakin ingin ${verb} permintaan ini?`,
+                    icon: 'question',
+                    showCancelButton: true,
+                    confirmButtonColor: action === 'APPROVE' ? '#10b981' : '#ef4444',
+                    cancelButtonColor: '#64748b',
+                    confirmButtonText: 'Ya, Lanjutkan'
+                });
+                confirmed = result.isConfirmed;
+            } else {
+                confirmed = confirm(`Konfirmasi: ${verb} permintaan ini?`);
+            }
+
+            if (confirmed) {
+                try {
+                    const res = await fetch('/api/rentals/approve', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                        body: JSON.stringify({ rental_id: id, action })
+                    });
+                    
+                    if(res.ok) {
+                        await Swal.fire('Berhasil!', 'Permintaan telah diproses.', 'success');
+                        loadRentals();
+                    } else {
+                        const err = await res.json();
+                        Swal.fire('Gagal!', err.message || 'Terjadi kesalahan.', 'error');
+                    }
+                } catch(e) {
+                    Swal.fire('Error!', 'Gagal menghubungi server.', 'error');
+                    console.error(e);
+                }
+            }
+        }
+        
+        // Initial Check
+        loadRentals();
     </script>
 </body>
 </html>

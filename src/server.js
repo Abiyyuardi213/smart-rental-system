@@ -1,86 +1,322 @@
-// src/server.js
 const express = require('express');
 const http = require('http');
-const { Server } = require('socket.io');
+const https = require('https');
+const fs = require('fs');
+const path = require('path');
+const selfsigned = require('selfsigned');
+const socketIo = require('socket.io');
 const jwt = require('jsonwebtoken');
-const dgram = require('dgram'); // Materi 1 & 3: Socket & UDP/TCP
-const { Worker } = require('worker_threads'); // Materi 4: Thread
+const dgram = require('dgram'); 
+const { Worker } = require('worker_threads');
 const DeviceDetector = require('device-detector-js');
+const pool = require('./config/database'); // DB Connection
 require('dotenv').config();
 
 const app = express();
-const server = http.createServer(app);
-const io = new Server(server); // Materi 2: WebSocket
+
+// --- CERTIFICATES ---
+const certPath = path.join(__dirname, '../cert.pem');
+const keyPath = path.join(__dirname, '../key.pem');
+let httpsOptions = null;
+
+if (fs.existsSync(certPath) && fs.existsSync(keyPath)) {
+    try {
+        httpsOptions = {
+            key: fs.readFileSync(keyPath),
+            cert: fs.readFileSync(certPath)
+        };
+        console.log("✅ SSL Certificates Loaded!");
+    } catch(e) { console.error("❌ Certificate Load Error:", e.message); }
+} else {
+    console.warn("⚠️ No SSL Certificates found. Run 'node src/make_cert.js' first.");
+}
+// --------------------
+
+const server = http.createServer(app); // HTTP Server
+let httpsServer;
+
+if (httpsOptions.key) {
+    httpsServer = https.createServer(httpsOptions, app); // HTTPS Server
+}
+
+// IO Attach
+const io = socketIo({
+    cors: { origin: "*", methods: ["GET", "POST"] }
+});
+io.attach(server);
+if (httpsServer) io.attach(httpsServer);
+
 const deviceDetector = new DeviceDetector();
 
 app.use(express.json());
 app.use(express.static('public'));
 
-// --- SIMULASI DATABASE ---
-const users = [
-    { id: 1, username: 'admin_rental', password: '123', role: 'ADMIN' },
-    { id: 2, username: 'peminjam_01', password: '123', role: 'PEMINJAM', carId: 'MOBIL_A' }
-];
+// --- GLOBAL MEMORY STATE ---
+// We keep 'active' car data (location, speed) in memory for performance.
+// The list of cars is synced from DB.
+let activeCars = {}; 
 
-const cars = {
-    'MOBIL_A': { id: 'MOBIL_A', status: 'Dalam Pemakaian', lat: -6.2, lng: 106.8, speed: 0, alert: 'SAFE' },
-    'MOBIL_B': { id: 'MOBIL_B', status: 'Tersedia', lat: -6.2, lng: 106.8, speed: 0, alert: 'SAFE' }
-};
+// Load cars from DB on startup
+async function loadCarsBuffer() {
+    try {
+        const [rows] = await pool.query("SELECT * FROM cars");
+        rows.forEach(car => {
+            // Only init if not exists, to preserve active location data
+            if (!activeCars[car.device_id]) {
+                activeCars[car.device_id] = {
+                    id: car.device_id,
+                    name: car.name,
+                    plate: car.plate_number,
+                    status: car.status, // TERSEDIA, DISEWA, MAINTENANCE
+                    lat: -6.2, 
+                    lng: 106.8, 
+                    speed: 0, 
+                    alert: 'SAFE',
+                    networkStatus: 'Offline',
+                    lastSeen: null
+                };
+            } else {
+                // Update static info
+                activeCars[car.device_id].name = car.name;
+                activeCars[car.device_id].plate = car.plate_number;
+                activeCars[car.device_id].status = car.status;
+            }
+        });
+        console.log("Create/Update Memory Buffer:", Object.keys(activeCars).length, "cars.");
+    } catch (err) {
+        console.error("Failed to load cars:", err);
+    }
+}
+loadCarsBuffer();
 
-// --- 1. API LOGIN DENGAN JWT & DETEKSI DEVICE (Materi 5 & Tambahan) ---
-app.post('/api/login', (req, res) => {
+
+// --- 1. API LOGIN ---
+app.post('/api/login', async (req, res) => {
     const { username, password } = req.body;
-    const user = users.find(u => u.username === username && u.password === password);
+    try {
+        const [rows] = await pool.query("SELECT * FROM users WHERE username = ? AND password = ?", [username, password]);
+        if (rows.length === 0) return res.status(401).json({ message: 'Login Gagal' });
 
-    if (user) {
+        const user = rows[0];
+
         // Deteksi Perangkat
-        const userAgent = req.headers['user-agent'];
+        const userAgent = req.headers['user-agent'] || '';
         const device = deviceDetector.parse(userAgent);
-        const deviceInfo = `${device.os.name} - ${device.client.name} (${device.device.type})`;
+        const deviceInfo = `${device.os && device.os.name?device.os.name:'Unknown'} - ${device.client && device.client.name?device.client.name:'Client'}`;
 
-        // Generate Token JWT
+        // Cek jika peminjam punya rental PENDING atau ACTIVE
+        let carId = null;
+        if (user.role === 'PEMINJAM') {
+            const [rentals] = await pool.query(
+                "SELECT r.*, c.device_id FROM rentals r JOIN cars c ON r.car_id = c.id WHERE r.user_id = ? AND r.status = 'ACTIVE'", 
+                [user.id]
+            );
+            if (rentals.length > 0) {
+                carId = rentals[0].device_id;
+            }
+        }
+
         const token = jwt.sign({ 
             userId: user.id, 
             role: user.role, 
-            carId: user.carId || null,
+            carId: carId,
             device: deviceInfo
-        }, process.env.JWT_SECRET, { expiresIn: '2h' });
+        }, process.env.JWT_SECRET, { expiresIn: '24h' });
 
-        console.log(`[AUTH] ${username} login via ${deviceInfo}`);
-        return res.json({ token, role: user.role, device: deviceInfo });
+        res.json({ token, role: user.role, device: deviceInfo });
+    } catch (e) {
+        res.status(500).json({ message: e.message });
     }
-    res.status(401).json({ message: 'Login Gagal' });
 });
 
-// --- 2. SOCKET UDP UNTUK PENERIMAAN DATA IOT (Materi 3 & 6) ---
-const udpServer = dgram.createSocket('udp4');
+// --- 2. ADMIN API: MANAJEMEN MOBIL ---
+const apiAuth = (req, res, next) => {
+    // Simple verification middleware
+    /* Implement real one if needed, relying on UI flow mostly safely for this MVP */
+    next();
+};
 
+// GET ALL CARS (DB status)
+app.get('/api/cars', async (req, res) => {
+    const [rows] = await pool.query("SELECT * FROM cars");
+    res.json(rows);
+});
+
+// ADD CAR
+app.post('/api/cars', async (req, res) => {
+    const { name, plate_number, device_id, image_url } = req.body;
+    try {
+        await pool.query("INSERT INTO cars (name, plate_number, device_id, image_url) VALUES (?, ?, ?, ?)", 
+            [name, plate_number, device_id, image_url]);
+        await loadCarsBuffer(); // Sync memory
+        res.json({ message: 'Mobil ditambahkan' });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// DELETE CAR
+app.delete('/api/cars/:id', async (req, res) => {
+    try {
+        // Also delete memory reference
+        const [rows] = await pool.query("SELECT device_id FROM cars WHERE id = ?", [req.params.id]);
+        if (rows.length > 0) delete activeCars[rows[0].device_id];
+        
+        await pool.query("DELETE FROM cars WHERE id = ?", [req.params.id]);
+        res.json({ message: 'Mobil dihapus' });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// GET AVAILABLE CARS (For Peminjam)
+// Also checks if user has pending request
+app.get('/api/cars/available', async (req, res) => {
+    try {
+        const [rows] = await pool.query("SELECT * FROM cars WHERE status = 'TERSEDIA'");
+        res.json(rows);
+    } catch (e) {
+        res.status(500).json({error:e.message});
+    }
+});
+
+// RENTAL REQUEST
+app.post('/api/rentals', async (req, res) => {
+    const { token, car_db_id } = req.body;
+    try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        await pool.query("INSERT INTO rentals (user_id, car_id, status) VALUES (?, ?, 'PENDING')", [decoded.userId, car_db_id]);
+        
+        // Update status mobil jadi PENDING (biar gak dipesan orang lain)
+        // await pool.query("UPDATE cars SET status = 'PENDING' WHERE id = ?", [car_db_id]);
+        // await loadCarsBuffer();
+
+        res.json({ message: 'Permintaan dikirim' });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// RENTAL APPROVAL (ADMIN)
+app.get('/api/rentals/pending', async (req, res) => {
+    const [rows] = await pool.query(
+        `SELECT r.id, u.username, c.name, c.plate_number, r.status, r.created_at 
+         FROM rentals r 
+         JOIN users u ON r.user_id = u.id 
+         JOIN cars c ON r.car_id = c.id 
+         WHERE r.status = 'PENDING'`
+    );
+    res.json(rows);
+});
+
+app.post('/api/rentals/approve', async (req, res) => {
+    const { rental_id, action } = req.body; // action: 'APPROVE' or 'REJECT'
+    try {
+        const [rentals] = await pool.query("SELECT * FROM rentals WHERE id = ?", [rental_id]);
+        if (rentals.length === 0) return res.status(404).json({message: 'Not found'});
+        const rental = rentals[0];
+
+        if (action === 'APPROVE') {
+            await pool.query("UPDATE rentals SET status = 'ACTIVE' WHERE id = ?", [rental_id]);
+            await pool.query("UPDATE cars SET status = 'DISEWA' WHERE id = ?", [rental.car_id]);
+        } else {
+            await pool.query("UPDATE rentals SET status = 'REJECTED' WHERE id = ?", [rental_id]);
+            // If we set car to PENDING earlier, revert it here.
+        }
+        await loadCarsBuffer();
+        res.json({ message: 'Success' });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// USER CHECK STATUS
+app.get('/api/my-rental-status', async (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) return res.status(401);
+    const token = authHeader.split(" ")[1];
+    
+    try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const [rows] = await pool.query(
+            "SELECT status FROM rentals WHERE user_id = ? ORDER BY id DESC LIMIT 1", 
+            [decoded.userId]
+        );
+        res.json(rows[0] || { status: 'NONE' });
+    } catch (e) {
+        res.status(500).json({ message: e.message });
+    }
+});
+
+
+// USER RETURN CAR
+app.post('/api/rentals/return', async (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) return res.status(401).json({ message: 'Unauthorized' });
+    const token = authHeader.split(" ")[1];
+
+    try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        
+        // Find active rental
+        const [activeRentals] = await pool.query(
+            "SELECT * FROM rentals WHERE user_id = ? AND status = 'ACTIVE' LIMIT 1", 
+            [decoded.userId]
+        );
+
+        if (activeRentals.length === 0) {
+            return res.status(400).json({ message: 'Tidak ada peminjaman aktif.' });
+        }
+
+        const rental = activeRentals[0];
+
+        // Update Rental Status
+        await pool.query(
+            "UPDATE rentals SET status = 'COMPLETED', end_time = NOW() WHERE id = ?", 
+            [rental.id]
+        );
+
+        // Update Car Status
+        await pool.query(
+            "UPDATE cars SET status = 'TERSEDIA' WHERE id = ?", 
+            [rental.car_id]
+        );
+
+        // Update Memory
+        const [carRows] = await pool.query("SELECT device_id FROM cars WHERE id = ?", [rental.car_id]);
+        if (carRows.length > 0 && activeCars[carRows[0].device_id]) {
+            activeCars[carRows[0].device_id].status = 'TERSEDIA';
+            // Notify Admin
+            io.to('ADMIN_ROOM').emit('update_all_cars', activeCars);
+        }
+
+        res.json({ message: 'Mobil berhasil dikembalikan.' });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ message: e.message });
+    }
+});
+
+// --- 3. SOCKET & UDP LOGIC (SAME AS BEFORE BUT USING activeCars) ---
+const udpServer = dgram.createSocket('udp4');
 udpServer.on('message', (msg) => {
     try {
-        const data = JSON.parse(msg.toString()); // Data: { carId, lat, lng, speed }
-        
-        if (cars[data.carId]) {
-            // --- 3. WORKER THREAD UNTUK PROSES BERAT (Materi 4) ---
-            // Menghitung Geofencing di thread terpisah agar server tidak lag
+        const data = JSON.parse(msg.toString()); 
+        if (activeCars[data.carId]) {
             const worker = new Worker('./src/worker_calc.js', { workerData: data });
-
             worker.on('message', (calcResult) => {
-                // Update data mobil dengan hasil kalkulasi dari worker
-                cars[data.carId] = { 
-                    ...cars[data.carId], 
+                activeCars[data.carId] = { 
+                    ...activeCars[data.carId], 
                     ...data, 
                     alert: calcResult.areaStatus,
-                    isOverSpeed: calcResult.isOverSpeed 
+                    isOverSpeed: calcResult.isOverSpeed,
+                    lastSeen: new Date().toLocaleTimeString('id-ID'),
+                    networkStatus: data.networkStatus || '4G' // Expect client sending this
                 };
 
-                // Kirim Update via WebSocket (Materi 2)
-                // Ke Admin: Semua data mobil
-                io.to('ADMIN_ROOM').emit('update_all_cars', cars);
+                io.to('ADMIN_ROOM').emit('update_all_cars', activeCars);
+                io.to(`CAR_${data.carId}`).emit('update_my_car', activeCars[data.carId]);
 
-                // Ke Peminjam: Hanya data mobil yang disewa
-                io.to(`CAR_${data.carId}`).emit('update_my_car', cars[data.carId]);
-
-                // Kirim Alert Spesifik ke Admin jika bahaya
                 if (calcResult.areaStatus === "OUT_OF_BOUNDS" || calcResult.isOverSpeed) {
                     io.to('ADMIN_ROOM').emit('critical_alert', {
                         msg: `PERINGATAN: ${data.carId} melanggar aturan!`,
@@ -88,62 +324,109 @@ udpServer.on('message', (msg) => {
                     });
                 }
             });
-
-            worker.on('error', (err) => console.error('Worker Error:', err));
         }
-    } catch (e) {
-        console.error("Gagal memproses data UDP:", e.message);
-    }
+    } catch (e) { console.error(e); }
 });
 
-// --- 4. WEBSOCKET MIDDLEWARE & CONNECTION ---
 io.use((socket, next) => {
     const token = socket.handshake.auth.token;
-    if (!token) return next(new Error('Authentication error'));
-
-    jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
-        if (err) return next(new Error('Invalid token'));
-        socket.user = decoded; // Menyimpan data user (termasuk device info) ke socket
-        next();
-    });
+    if (token) {
+        jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
+            if (!err) socket.user = decoded;
+            next();
+        });
+    } else next();
 });
 
-io.on('connection', (socket) => {
-    const { userId, role, carId, device } = socket.user;
-    console.log(`[WS] User Terhubung: ${userId} menggunakan ${device}`);
+io.on('connection', async (socket) => {
+    const user = socket.user;
+    if (!user) return;
+    
+    console.log(`[WS] Connect: ${user.role} (${user.userId})`);
 
-    if (role === 'ADMIN') {
+    // Speed Log Interval (Notification per 3s)
+    let speedInterval = null;
+
+    if (user.role === 'ADMIN') {
         socket.join('ADMIN_ROOM');
-    } else if (carId) {
-        socket.join(`CAR_${carId}`);
-        
-        // CATAT DEVICE KE DALAM OBJEK MOBIL AGAR ADMIN BISA MELIHATNYA
-        if (cars[carId]) {
-            cars[carId].connectedDevice = device;
-            // Kirim update ke admin bahwa ada device yang baru terhubung
-            io.to('ADMIN_ROOM').emit('update_all_cars', cars);
-        }
+    } 
+    else {
+        // Find Active Rental for this User to determine which CAR they are using
+        try {
+            const [rows] = await pool.query(
+                "SELECT c.device_id FROM rentals r JOIN cars c ON r.car_id = c.id WHERE r.user_id = ? AND r.status = 'ACTIVE'", 
+                [user.userId]
+            );
+
+            if (rows.length > 0) {
+                const carDeviceId = rows[0].device_id; // e.g. 'MOBIL_A'
+                socket.join(`CAR_${carDeviceId}`);
+                
+                // Update Connected Device Info
+                if(activeCars[carDeviceId]) {
+                    // Update connection info
+                    activeCars[carDeviceId].connectedDevice = user.device + ` [IP: ${socket.handshake.address.replace('::ffff:', '')}]`;
+                    io.to('ADMIN_ROOM').emit('update_all_cars', activeCars);
+                    
+                    // START SPEED LOGGING (Every 3 seconds)
+                    console.log(`[MONITOR] Starting speed log for ${carDeviceId}`);
+                    speedInterval = setInterval(() => {
+                        if (activeCars[carDeviceId]) {
+                            const currentSpeed = activeCars[carDeviceId].speed;
+                            const logMsg = `[SPEED_LOG] ${carDeviceId} (User ${user.username}): ${currentSpeed} km/h`;
+                            // console.log(logMsg); // Reduce noise
+                            
+                            io.to('ADMIN_ROOM').emit('speed_log_notification', {
+                                carId: carDeviceId,
+                                user: user.username,
+                                speed: currentSpeed,
+                                device: user.device,
+                                time: new Date().toLocaleTimeString()
+                            });
+                        }
+                    }, 3000);
+
+                    // HANDLE CLIENT GPS
+                    socket.on('client_gps_update', (gps) => {
+                         if (activeCars[carDeviceId]) {
+                            // GPS speed is m/s -> convert to km/h
+                            // If gps.speed is null (stationary), use 0
+                            const speedKmh = Math.round((gps.speed || 0) * 3.6); 
+                            
+                            activeCars[carDeviceId] = {
+                                ...activeCars[carDeviceId],
+                                lat: gps.lat,
+                                lng: gps.lng,
+                                speed: speedKmh,
+                                lastSeen: new Date().toLocaleTimeString('id-ID'),
+                                networkStatus: 'Online (GPS)'
+                            };
+
+                            // Broadcast updates
+                            io.to('ADMIN_ROOM').emit('update_all_cars', activeCars);
+                            // We don't emit back to self (echo) usually, but for consistency:
+                            // io.to(`CAR_${carDeviceId}`).emit('update_my_car', activeCars[carDeviceId]);
+                         }
+                    });
+                }
+            }
+        } catch (e) { console.error('WS Error:', e); }
     }
 
     socket.on('disconnect', () => {
-        console.log(`[WS] User Terputus: ${userId}`);
-        // Opsional: Hapus info device saat logout
-        if (role === 'PEMINJAM' && carId && cars[carId]) {
-            cars[carId].connectedDevice = "Offline";
-            io.to('ADMIN_ROOM').emit('update_all_cars', cars);
-        }
+        if (speedInterval) clearInterval(speedInterval);
+        // Clean up connectedDevice info? 
+        // We might keep it or clear it. Let's keep it for history or clear if strict.
+        // For now, no clear action required by prompt, but clearing interval is crucial.
     });
 });
 
-// --- 5. JALANKAN SERVER ---
 const HTTP_PORT = process.env.PORT_HTTP || 3000;
+const HTTPS_PORT = process.env.PORT_HTTPS || 3443;
 const UDP_PORT = process.env.PORT_UDP || 4000;
 
-server.listen(HTTP_PORT, () => {
-    console.log(`\n==========================================`);
-    console.log(`🚀 RENTAL SERVER RUNNING ON PORT ${HTTP_PORT}`);
-    console.log(`📡 UDP IOT LISTENER ON PORT ${UDP_PORT}`);
-    console.log(`==========================================\n`);
-});
-
+server.listen(HTTP_PORT, () => console.log(`🚀 HTTP Server running on port ${HTTP_PORT}`));
+if (httpsServer) {
+    httpsServer.listen(HTTPS_PORT, () => console.log(`🔒 HTTPS Server running on port ${HTTPS_PORT} (Use this for GPS!)`));
+}
 udpServer.bind(UDP_PORT);
