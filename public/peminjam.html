@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <title>Dashboard Saya - Smart Rental</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        body { font-family: sans-serif; display: flex; justify-content: center; padding-top: 50px; background: #e3f2fd; }
+        .panel { background: white; padding: 30px; border-radius: 12px; width: 350px; text-align: center; box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
+        .status-badge { background: #28a745; color: white; padding: 5px 10px; border-radius: 20px; font-size: 0.8em; }
+    </style>
+</head>
+<body>
+    <div class="panel">
+        <h2>Status Sewa Saya</h2>
+        <hr>
+        <h1 id="car-id">--</h1>
+        <p>Kecepatan Saat Ini</p>
+        <h2 id="speed">0 km/jam</h2>
+        <p class="status-badge" id="status">Aktif</p>
+        <p><small id="pos">Mencari lokasi...</small></p>
+        <button onclick="localStorage.clear(); location.href='/'" style="margin-top:20px;">Logout</button>
+    </div>
+
+    <script>
+        const token = localStorage.getItem('token');
+        const socket = io({ auth: { token } });
+
+        socket.on('update_my_car', (car) => {
+            document.getElementById('car-id').innerText = car.id;
+            document.getElementById('speed').innerText = car.speed + " km/jam";
+            document.getElementById('pos').innerText = `Lokasi: ${car.lat.toFixed(4)}, ${car.lng.toFixed(4)}`;
+        });
+    </script>
+</body>
+</html>

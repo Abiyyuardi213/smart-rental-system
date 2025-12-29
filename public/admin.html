@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <title>Admin Dashboard - Smart Rental</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; background: #f0f2f5; }
+        h1 { color: #1c1e21; border-bottom: 2px solid #ddd; padding-bottom: 10px; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; margin-top: 20px; }
+        .car-card { background: white; padding: 20px; border-radius: 12px; border-top: 6px solid #007bff; box-shadow: 0 4px 12px rgba(0,0,0,0.08); transition: transform 0.2s; }
+        .car-card:hover { transform: translateY(-5px); }
+        .car-id { font-size: 1.4em; font-weight: bold; margin-bottom: 10px; color: #007bff; }
+        .info-label { font-weight: 600; color: #555; }
+        .speed-warning { color: #dc3545; font-weight: bold; animation: blink 1s infinite; }
+        .device-info { background: #e9ecef; padding: 5px 10px; border-radius: 6px; font-size: 0.85em; color: #495057; display: inline-block; margin-top: 10px; }
+        .alert-box { background: #fff3cd; color: #856404; padding: 10px; border-radius: 6px; margin-top: 10px; font-size: 0.9em; border: 1px solid #ffeeba; }
+        @keyframes blink { 50% { opacity: 0.5; } }
+    </style>
+</head>
+<body>
+    <h1>🚗 Monitoring Armada Rental</h1>
+    <div id="car-list" class="grid">
+        </div>
+
+    <script>
+        const token = localStorage.getItem('token');
+        if (!token) window.location.href = '/';
+
+        // Hubungkan ke WebSocket
+        const socket = io({ auth: { token } });
+
+        socket.on('update_all_cars', (cars) => {
+            const container = document.getElementById('car-list');
+            container.innerHTML = '';
+            
+            Object.values(cars).forEach(car => {
+                const isViolation = car.alert === "OUT_OF_BOUNDS" || car.speed > 100;
+                
+                const div = document.createElement('div');
+                div.className = 'car-card';
+                div.innerHTML = `
+                    <div class="car-id">${car.id}</div>
+                    <p><span class="info-label">Status:</span> ${car.status}</p>
+                    <p><span class="info-label">Kecepatan:</span> 
+                        <span class="${car.speed > 80 ? 'speed-warning' : ''}">${car.speed} km/jam</span>
+                    </p>
+                    <p><span class="info-label">Koordinat:</span> ${car.lat.toFixed(4)}, ${car.lng.toFixed(4)}</p>
+                    
+                    <div class="device-info">
+                        📱 <b>Perangkat Peminjam:</b><br>
+                        ${car.connectedDevice || "Menunggu Peminjam Login..."}
+                    </div>
+
+                    ${isViolation ? `
+                        <div class="alert-box">
+                            ⚠️ <b>PELANGGARAN:</b> ${car.alert === "OUT_OF_BOUNDS" ? 'Keluar Wilayah!' : 'Melebihi Kecepatan!'}
+                        </div>
+                    ` : ''}
+                `;
+                container.appendChild(div);
+            });
+        });
+
+        socket.on('critical_alert', (data) => {
+            console.warn("CRITICAL:", data.msg);
+        });
+    </script>
+</body>
+</html>
