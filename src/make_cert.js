@@ -3,11 +3,10 @@ const fs = require('fs');
 
 async function run() {
     const attrs = [{ name: 'commonName', value: 'localhost' }];
-    const options = { days: 365, keySize: 2048 }; // keySize helps speed
+    const options = { days: 365, keySize: 2048 };
 
     console.log("Start generation...");
     
-    // Check if it returns promise or object
     try {
         let pems = selfsigned.generate(attrs, options);
         if (pems && pems.cert) {
@@ -23,7 +22,6 @@ async function run() {
             return;
         }
     } catch (e) {
-        // failed sync, try callback
         console.log("Sync/Promise check failed, trying callback...", e.message);
     }
 

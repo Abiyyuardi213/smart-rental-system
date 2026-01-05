@@ -1,8 +1,6 @@
 const { parentPort, workerData } = require('worker_threads');
 
-// Fungsi simulasi Geofencing (Cek apakah mobil keluar batas)
 function checkGeofence(lat, lng) {
-    // Contoh batas sederhana (misal: Jakarta)
     const jakartaBounds = { latMin: -6.4, latMax: -6.0, lngMin: 106.6, lngMax: 107.0 };
     
     if (lat < jakartaBounds.latMin || lat > jakartaBounds.latMax || 

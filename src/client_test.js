@@ -3,7 +3,6 @@ const dgram = require('dgram');
 const udpClient = dgram.createSocket('udp4');
 
 async function start() {
-    // 1. Login HTTP
     console.log("Logging in...");
     const response = await fetch('http://127.0.0.1:3000/api/login', {
         method: 'POST',
@@ -11,7 +10,6 @@ async function start() {
         body: JSON.stringify({ username: 'peminjam_01', password: '123' })
     });
     
-    // Check status
     if (!response.ok) {
         console.error("HTTP Error:", response.status, response.statusText);
         const text = await response.text();
@@ -27,7 +25,6 @@ async function start() {
     
     console.log("Logged in! Token:", loginData.token.substring(0, 20) + "...");
     
-    // 2. Connect WebSocket
     const socket = io('http://127.0.0.1:3000', {
         auth: { token: loginData.token }
     });
@@ -40,7 +37,6 @@ async function start() {
         console.log(`[WS] Update My Car: Speed ${car.speed} km/h, Alert: ${car.alert}, LastSeen: ${car.lastSeen}`);
     });
 
-    // 3. Send UDP Data
     const carId = 'MOBIL_A';
     console.log("Starting UDP Stream...");
     
@@ -56,7 +52,7 @@ async function start() {
         udpClient.send(data, 4000, 'localhost', (err) => {
             if (err) console.error(err);
         });
-    }, 2000); // Every 2 seconds
+    }, 2000);
 }
 
 start();

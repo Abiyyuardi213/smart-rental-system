@@ -6,28 +6,239 @@
     <title>Login - Smart Rental</title>
     <link rel="stylesheet" href="main.css">
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', sans-serif;
+            background: #f3f4f6;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            position: relative;
+        }
+
+        .bg-shape {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(80px);
+            z-index: -1;
+            opacity: 0.6;
+            animation: float 10s infinite alternate;
+        }
+        .shape-1 {
+            width: 400px; height: 400px;
+            background: #3b82f6;
+            top: -100px; left: -100px;
+        }
+        .shape-2 {
+            width: 300px; height: 300px;
+            background: #8b5cf6;
+            bottom: -50px; right: -50px;
+            animation-duration: 8s;
+        }
+        .shape-3 {
+            width: 200px; height: 200px;
+            background: #10b981;
+            bottom: 20%; left: 20%;
+            animation-duration: 12s;
+        }
+
+        @keyframes float {
+            0% { transform: translate(0, 0); }
+            100% { transform: translate(30px, 50px); }
+        }
+
+        .login-card {
+            width: 100%;
+            max-width: 420px;
+            padding: 40px;
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-radius: 24px;
+            border: 1px solid rgba(255, 255, 255, 0.8);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            animation: slideUp 0.8s cubic-bezier(0.2, 0.8, 0.2, 1);
+        }
+
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(40px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .brand-header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .brand-icon {
+            display: inline-flex;
+            width: 70px;
+            height: 70px;
+            background: linear-gradient(135deg, #3b82f6, #2563eb);
+            color: white;
+            border-radius: 20px;
+            align-items: center;
+            justify-content: center;
+            font-size: 32px;
+            box-shadow: 0 10px 20px -5px rgba(59, 130, 246, 0.5);
+            margin-bottom: 15px;
+        }
+
+        .brand-header h2 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 28px;
+            margin: 0;
+            color: #1f2937;
+        }
+        
+        .brand-header p {
+            margin: 5px 0 0;
+            color: #6b7280;
+            font-size: 14px;
+        }
+
+        .input-group {
+            margin-bottom: 20px;
+            position: relative;
+        }
+
+        .input-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: #374151;
+            font-size: 14px;
+        }
+
+        .input-wrapper {
+            position: relative;
+        }
+
+        .input-wrapper i {
+            position: absolute;
+            left: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #9ca3af;
+            font-size: 18px;
+            transition: color 0.3s;
+        }
+
+        .input-wrapper input {
+            width: 100%;
+            padding: 12px 12px 12px 42px;
+            border: 2px solid #e5e7eb;
+            border-radius: 12px;
+            font-size: 15px;
+            outline: none;
+            transition: all 0.3s;
+            background: rgba(255, 255, 255, 0.8);
+            color: #1f2937;
+        }
+
+        .input-wrapper input:focus {
+            border-color: #3b82f6;
+            background: white;
+            box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1);
+        }
+
+        .input-wrapper input:focus + i {
+            color: #3b82f6;
+        }
+
+        .btn-login {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #2563eb, #1d4ed8);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.3);
+            margin-top: 10px;
+        }
+
+        .btn-login:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px -5px rgba(37, 99, 235, 0.5);
+        }
+
+        .btn-login:active {
+            transform: translateY(0);
+        }
+
+        #error-msg {
+            min-height: 20px;
+            margin-top: 15px;
+            font-size: 0.9rem;
+            text-align: center;
+            color: #ef4444;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        
+        .footer-text {
+            text-align: center;
+            margin-top: 30px;
+            font-size: 12px;
+            color: #9ca3af;
+        }
+
+        /* Mobile Responsive */
+        @media (max-width: 480px) {
+            .login-card {
+                padding: 30px;
+                margin: 20px;
+            }
+        }
+    </style>
 </head>
 <body>
-    <div class="login-wrapper">
-        <div class="glass-panel login-box">
-            <div style="text-align: center; margin-bottom: 30px;">
-                <i class="ph ph-car-profile" style="font-size: 3rem; color: var(--primary);"></i>
-                <h2 style="margin-top: 10px;">Smart Rental</h2>
-                <p style="color: var(--text-muted);">IoT Monitoring System</p>
-            </div>
 
-            <div class="input-group">
-                <label>Username</label>
-                <input type="text" id="user" placeholder="Nama Pengguna" value="">
-            </div>
+    <div class="bg-shape shape-1"></div>
+    <div class="bg-shape shape-2"></div>
+    <div class="bg-shape shape-3"></div>
 
-            <div class="input-group">
-                <label>Password</label>
-                <input type="password" id="pass" placeholder="Kata Sandi" value="">
+    <div class="login-card">
+        <div class="brand-header">
+            <div class="brand-icon">
+                <i class="ph ph-car-profile"></i>
             </div>
+            <h2>Smart Rental</h2>
+            <p>Admin & User Monitoring Dashboard</p>
+        </div>
 
-            <button onclick="doLogin()" class="btn" style="width: 100%;">Masuk Sistem</button>
-            <p id="error-msg" style="color: var(--danger); text-align: center; margin-top: 15px; font-size: 0.9rem;"></p>
+        <div class="input-group">
+            <label>Username</label>
+            <div class="input-wrapper">
+                <input type="text" id="user" placeholder="Masukkan username" autocomplete="off">
+                <i class="ph ph-user"></i>
+            </div>
+        </div>
+
+        <div class="input-group">
+            <label>Password</label>
+            <div class="input-wrapper">
+                <input type="password" id="pass" placeholder="Masukkan password">
+                <i class="ph ph-lock-key"></i>
+            </div>
+        </div>
+
+        <button onclick="doLogin()" class="btn-login" id="login-btn">
+            Masuk Sekarang <i class="ph ph-arrow-right" style="vertical-align: middle; margin-left: 5px;"></i>
+        </button>
+
+        <p id="error-msg">Error message goes here</p>
+
+        <div class="footer-text">
+            &copy; 2026 Smart Rental System. All rights reserved.
         </div>
     </div>
 
@@ -39,11 +250,15 @@
         async function doLogin() {
             const username = document.getElementById('user').value;
             const password = document.getElementById('pass').value;
-            const btn = document.querySelector('button');
+            const btn = document.getElementById('login-btn');
             const err = document.getElementById('error-msg');
 
-            btn.innerText = "Memproses...";
-            err.innerText = "";
+            err.style.opacity = '0';
+            btn.innerHTML = `<i class="ph ph-spinner-gap" style="animation: spin 1s linear infinite"></i> Memuat...`;
+            btn.style.opacity = '0.7';
+            btn.disabled = true;
+
+            await new Promise(r => setTimeout(r, 600));
 
             try {
                 const res = await fetch('/api/login', {
@@ -53,19 +268,32 @@
                 });
 
                 const data = await res.json();
+                
                 if (data.token) {
                     localStorage.setItem('token', data.token);
-                    if (data.role === 'ADMIN') window.location.href = '/admin.html';
-                    else window.location.href = '/peminjam.html';
+                    btn.innerHTML = `<i class="ph ph-check-circle"></i> Berhasil!`;
+                    btn.style.background = "#10b981";
+                    
+                    setTimeout(() => {
+                        if (data.role === 'ADMIN') window.location.href = '/admin.html';
+                        else window.location.href = '/peminjam.html';
+                    }, 500);
                 } else {
-                    err.innerText = data.message || "Login Gagal";
-                    btn.innerText = "Masuk Sistem";
+                    throw new Error(data.message || "Login Gagal");
                 }
             } catch (e) {
-                err.innerText = "Gagal terhubung ke server.";
-                btn.innerText = "Masuk Sistem";
+                err.innerText = e.message || "Gagal terhubung ke server.";
+                err.style.opacity = '1';
+                btn.innerHTML = `Masuk Sekarang <i class="ph ph-arrow-right" style="vertical-align: middle; margin-left: 5px;"></i>`;
+                btn.style.background = "";
+                btn.style.opacity = '1';
+                btn.disabled = false;
             }
         }
     </script>
+    
+    <style>
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+    </style>
 </body>
 </html>

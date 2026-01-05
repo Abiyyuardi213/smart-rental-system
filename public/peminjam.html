@@ -11,11 +11,9 @@
         body { padding-top: 20px; background: var(--dark-bg); min-height: 100vh; display: flex; justify-content: center; }
         .mobile-limit { width: 100%; max-width: 480px; padding: 20px; }
         
-        /* Views */
         .view-section { display: none; animation: fadeIn 0.4s; }
         .view-section.active { display: block; }
 
-        /* Car Item (Booking) */
         .book-card {
             background: var(--card-bg);
             border-radius: 16px;
@@ -29,7 +27,6 @@
         .book-card h3 { font-size: 1rem; color: var(--text-main); margin-bottom: 4px; }
         .book-card p { font-size: 0.8rem; color: var(--text-muted); }
 
-        /* Status Pending */
         .status-box {
             text-align: center;
             background: var(--card-bg);
@@ -38,7 +35,6 @@
             border: 1px solid rgba(0,0,0,0.1);
         }
 
-        /* Monitoring (Copy from previous) */
         .speed-gauge {
             width: 200px; height: 200px; border-radius: 50%;
             background: conic-gradient(from 180deg, var(--primary) 0%, rgba(200,200,200,0.3) 0%);
@@ -55,16 +51,13 @@
             <button onclick="logout()" style="background:none; border:none; color:var(--danger); font-size:1.5rem;"><i class="ph ph-sign-out"></i></button>
         </header>
 
-        <!-- VIEW 1: AVAILABLE CARS -->
         <div id="view-browse" class="view-section">
             <h3 style="color:var(--text-muted); margin-bottom:15px">Pilih Mobil</h3>
             <div id="available-list">
-                <!-- Loaded via JS -->
                  <p style="color: gray; text-align: center;">Memuat daftar mobil...</p>
             </div>
         </div>
 
-        <!-- VIEW 2: PENDING -->
         <div id="view-pending" class="view-section">
             <div class="status-box">
                 <i class="ph ph-hourglass-high" style="font-size: 4rem; color: var(--warning); margin-bottom: 20px;"></i>
@@ -76,7 +69,6 @@
             </div>
         </div>
 
-        <!-- VIEW 3: MONITORING (ACTIVE) -->
         <div id="view-monitor" class="view-section">
              <div class="glass-panel status-box" style="text-align:center; padding: 30px;">
                 <h2 id="car-title" style="margin-bottom: 5px; color: var(--primary);">--</h2>
@@ -93,7 +85,6 @@
                      ⚠️ <b>PERINGATAN!</b><br><span id="alert-msg"></span>
                 </div>
 
-                <!-- GPS Debug Info -->
                 <div style="margin-top:20px; font-size:0.8rem; color:var(--text-muted); background:rgba(0,0,0,0.02); padding:10px; border-radius:8px;">
                      <div>Status GPS: <span id="gps-status" style="font-weight:bold">Menunggu...</span></div>
                      <div id="gps-coords" style="font-family:monospace; margin-top:4px;">-</div>
@@ -118,11 +109,12 @@
         
         async function checkStatus() {
             try {
-                // 1. Check Rental Status
                 const res = await fetch('/api/my-rental-status', { headers: { 'Authorization': 'Bearer ' + token } });
                 const data = await res.json();
                 
                 document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
+                
+                if (data.status !== 'ACTIVE') stopGPS();
 
                 if (data.status === 'ACTIVE') {
                     document.getElementById('view-monitor').classList.add('active');
@@ -167,7 +159,7 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ token, car_db_id: carId })
             });
-            checkStatus(); // Refresh to Pending view
+            checkStatus();
         }
 
         async function finishRental() {
@@ -184,7 +176,7 @@
                 
                 if (res.ok) {
                     alert("Mobil berhasil dikembalikan!");
-                    checkStatus(); // Should redirect to browse
+                    checkStatus();
                 } else {
                     alert("Gagal mengembalikan mobil.");
                 }
@@ -194,7 +186,6 @@
             }
         }
 
-        // --- MONITORING SOCKET ---
         let socket;
         function startSocket() {
             if(socket) return;
@@ -204,11 +195,9 @@
                 document.getElementById('car-plate').innerText = car.plate;
                 document.getElementById('speed').innerText = car.speed;
                 
-                // Gauge
                 const val = Math.min((car.speed / 140) * 100, 100) / 2; 
                 document.getElementById('gauge').style.background = `conic-gradient(from 180deg, var(--primary) ${val}%, rgba(200,200,200,0.3) 0%)`;
 
-                // Alert
                 const alertBox = document.getElementById('alert-box');
                 if (car.alert === "OUT_OF_BOUNDS") {
                     alertBox.style.display = 'block';
@@ -224,7 +213,19 @@
             startGPS();
         }
 
+        let watchId = null; 
+        
+        function stopGPS() {
+             if (watchId !== null) {
+                navigator.geolocation.clearWatch(watchId);
+                watchId = null;
+                console.log("GPS Stopped");
+            }
+        }
+
         function startGPS() {
+            stopGPS();
+            
             const statusEl = document.getElementById('gps-status');
             const coordsEl = document.getElementById('gps-coords');
             
@@ -234,9 +235,7 @@
                 return;
             }
 
-            // Check if insecure context (HTTP)
             if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-                 // Try to guess HTTPS port (3443 default)
                  const httpsPort = 3443; 
                  const httpsUrl = `https://${window.location.hostname}:${httpsPort}${window.location.pathname}`;
                  
@@ -245,15 +244,14 @@
                                        <a href="${httpsUrl}" class="btn" style="background:var(--success); color:white; display:block; margin-top:8px; text-decoration:none; padding:8px; font-size:0.9rem;">
                                          <i class="ph ph-lock-key"></i> PINDAH KE HTTPS
                                        </a>`;
-                 statusEl.style.color = '#dc2626'; // Red
-                 // alert("Silakan klik tombol 'PINDAH KE HTTPS' di bawah Status GPS.");
+                 statusEl.style.color = '#dc2626';
                  return;
             }
 
             statusEl.innerText = "Mencari Lokasi...";
             statusEl.style.color = 'orange';
 
-            navigator.geolocation.watchPosition(
+            watchId = navigator.geolocation.watchPosition(
                 (pos) => {
                     const { latitude, longitude, speed, altitude, accuracy } = pos.coords;
                     
@@ -265,7 +263,7 @@
                         socket.emit('client_gps_update', { 
                             lat: latitude, 
                             lng: longitude, 
-                            speed: speed, // m/s
+                            speed: speed,
                             alt: altitude
                         });
                     }
@@ -284,7 +282,6 @@
             );
         }
 
-        // Initial Load
         checkStatus();
     </script>
 </body>

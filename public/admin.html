@@ -17,10 +17,8 @@
         .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 2000; justify-content: center; align-items: center; backdrop-filter: blur(4px); }
         .modal.active { display: flex; }
         
-        /* Ensure SweetAlert is on top */
         .swal2-container { z-index: 99999 !important; }
 
-        /* Tables */
         .data-table { width: 100%; border-collapse: separate; border-spacing: 0; }
         .data-table th, .data-table td { padding: 16px; text-align: left; border-bottom: 1px solid var(--border); }
         .data-table th { background: #f1f5f9; color: var(--text-muted); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
@@ -49,9 +47,7 @@
 
     <div class="main-content">
         
-        <!-- 1. MONITORING TAB -->
         <div id="monitoring" class="tab-content active">
-            <!-- Stats -->
             <div class="stats-row">
                 <div class="stat-card">
                     <div class="stat-icon blue"><i class="ph ph-car"></i></div>
@@ -67,7 +63,6 @@
                 </div>
             </div>
 
-            <!-- MAP -->
             <div id="map" class="glass-panel" style="height: 400px; margin-bottom: 30px; border-radius: 16px; border:1px solid var(--border); z-index:1;"></div>
 
             <div id="car-list" class="grid"></div>
@@ -129,14 +124,12 @@
             
             document.getElementById(id).classList.add('active');
             
-            // Set active nav item
             const btns = document.querySelectorAll('.nav-item');
             if(id === 'monitoring') btns[0].classList.add('active');
             if(id === 'cars') btns[1].classList.add('active');
             if(id === 'rentals') btns[2].classList.add('active');
 
             if(id === 'cars') loadCarsTable();
-            // Fix map size check
             if(id === 'monitoring' && map) setTimeout(() => map.invalidateSize(), 300);
         }
 
@@ -176,12 +169,17 @@
                             .bindPopup(`<b>${car.name}</b><br>Speed: ${car.speed} km/h`);
                         markers[car.id] = marker;
                     }
+                } else {
+                    if (markers[car.id]) {
+                        map.removeLayer(markers[car.id]);
+                        delete markers[car.id];
+                    }
                 }
 
                 if(car.status === 'TERSEDIA') ready++;
                 if(car.alert === 'OUT_OF_BOUNDS' || car.isOverSpeed) alerts++;
 
-                let statusColor = '#94a3b8'; // gray
+                let statusColor = '#94a3b8';
                 if(car.status === 'TERSEDIA') statusColor = 'var(--success)';
                 if(car.status === 'DISEWA') statusColor = 'var(--primary)';
                 if(car.alert === 'OUT_OF_BOUNDS') statusColor = 'var(--danger)';
@@ -230,33 +228,18 @@
                 container.appendChild(div);
             });
 
-            // Auto-Fit Map Logic
             if (activeLatLngs.length > 0 && !boundsInitialized) {
                 const bounds = L.latLngBounds(activeLatLngs);
                 map.fitBounds(bounds, { padding: [50, 50], maxZoom: 15 });
                 boundsInitialized = true;
             }
 
-            // Update Stats
             document.getElementById('total-cars').innerText = total;
             document.getElementById('ready-cars').innerText = ready;
             document.getElementById('alert-cars').innerText = alerts;
         });
 
-        // Speed Log Notification
         socket.on('speed_log_notification', (data) => {
-            // Optional: Show Toast
-            /*
-            const Toast = Swal.mixin({
-                toast: true, position: 'bottom-end', showConfirmButton: false, timer: 2000,
-                didOpen: (toast) => { toast.onmouseenter = Swal.stopTimer; toast.onmouseleave = Swal.resumeTimer; }
-            });
-            Toast.fire({
-                icon: 'info',
-                title: `${data.carId} (${data.speed} km/h)`
-            });
-            */
-            // Or just log to console as per request "tambahkan log"
             console.log(`[SPEED LOG] ${data.time} - ${data.carId}: ${data.speed} km/h (User: ${data.user})`);
         });
 
@@ -278,24 +261,45 @@
             } catch (e) { console.error(e); }
         }
 
+        function openCarModal() {
+            document.getElementById('car-modal').classList.add('active');
+        }
+
         async function saveCar() {
             const name = document.getElementById('car-name').value;
             const plate_number = document.getElementById('car-plate').value;
             const device_id = document.getElementById('car-device').value;
             if(!name || !plate_number || !device_id) return alert("Lengkapi data!");
 
-            await fetch('/api/cars', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token},
-                body: JSON.stringify({ name, plate_number, device_id })
-            });
-            document.getElementById('car-modal').classList.remove('active');
-            loadCarsTable();
+            try {
+                const res = await fetch('/api/cars', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token},
+                    body: JSON.stringify({ name, plate_number, device_id })
+                });
+                
+                if (res.ok) {
+                    if(typeof Swal !== 'undefined') Swal.fire('Sukses', 'Mobil berhasil ditambahkan', 'success');
+                    else alert('Mobil berhasil ditambahkan');
+                    
+                    document.getElementById('car-modal').classList.remove('active');
+                    document.getElementById('car-name').value = '';
+                    document.getElementById('car-plate').value = '';
+                    document.getElementById('car-device').value = '';
+                    loadCarsTable();
+                } else {
+                    const data = await res.json();
+                    if(typeof Swal !== 'undefined') Swal.fire('Gagal', data.error || 'Terjadi kesalahan', 'error');
+                    else alert('Gagal: ' + (data.error || 'Terjadi kesalahan'));
+                }
+            } catch (e) {
+                console.error(e);
+                alert("Gagal menghubungi server.");
+            }
         }
 
         async function deleteCar(id) {
             let confirmed = false;
-            // SWAL Fallback
             if(typeof Swal !== 'undefined') {
                 const result = await Swal.fire({
                     title: 'Hapus Mobil?', text: "Data tidak bisa dikembalikan.", icon: 'warning',
@@ -320,7 +324,6 @@
                 const data = await res.json();
                 const tbody = document.getElementById('rentals-table-body');
                 
-                // Pending Counter
                 const counter = document.getElementById('pending-count');
                 if(data.length > 0) { counter.innerText = data.length; counter.style.display = 'inline-block'; }
                 else { counter.style.display = 'none'; }
@@ -385,7 +388,6 @@
             }
         }
         
-        // Initial Check
         loadRentals();
     </script>
 </body>

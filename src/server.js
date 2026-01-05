@@ -9,12 +9,13 @@ const jwt = require('jsonwebtoken');
 const dgram = require('dgram'); 
 const { Worker } = require('worker_threads');
 const DeviceDetector = require('device-detector-js');
-const pool = require('./config/database'); // DB Connection
-require('dotenv').config();
+
+require('dotenv').config({ path: path.join(__dirname, '../.env') });
+
+const pool = require('./config/database');
 
 const app = express();
 
-// --- CERTIFICATES ---
 const certPath = path.join(__dirname, '../cert.pem');
 const keyPath = path.join(__dirname, '../key.pem');
 let httpsOptions = null;
@@ -30,16 +31,14 @@ if (fs.existsSync(certPath) && fs.existsSync(keyPath)) {
 } else {
     console.warn("⚠️ No SSL Certificates found. Run 'node src/make_cert.js' first.");
 }
-// --------------------
 
-const server = http.createServer(app); // HTTP Server
+const server = http.createServer(app);
 let httpsServer;
 
 if (httpsOptions.key) {
-    httpsServer = https.createServer(httpsOptions, app); // HTTPS Server
+    httpsServer = https.createServer(httpsOptions, app);
 }
 
-// IO Attach
 const io = socketIo({
     cors: { origin: "*", methods: ["GET", "POST"] }
 });
@@ -49,40 +48,35 @@ if (httpsServer) io.attach(httpsServer);
 const deviceDetector = new DeviceDetector();
 
 app.use(express.json());
-app.use(express.static('public'));
+app.use(express.static(path.join(__dirname, '../public')));
 
-// --- GLOBAL MEMORY STATE ---
-// We keep 'active' car data (location, speed) in memory for performance.
-// The list of cars is synced from DB.
 let activeCars = {}; 
 
-// Load cars from DB on startup
 async function loadCarsBuffer() {
     try {
         const [rows] = await pool.query("SELECT * FROM cars");
         rows.forEach(car => {
-            // Only init if not exists, to preserve active location data
             if (!activeCars[car.device_id]) {
                 activeCars[car.device_id] = {
                     id: car.device_id,
                     name: car.name,
                     plate: car.plate_number,
-                    status: car.status, // TERSEDIA, DISEWA, MAINTENANCE
-                    lat: -6.2, 
-                    lng: 106.8, 
+                    status: car.status,
+                    lat: null, 
+                    lng: null, 
                     speed: 0, 
                     alert: 'SAFE',
                     networkStatus: 'Offline',
                     lastSeen: null
                 };
             } else {
-                // Update static info
                 activeCars[car.device_id].name = car.name;
                 activeCars[car.device_id].plate = car.plate_number;
                 activeCars[car.device_id].status = car.status;
             }
         });
         console.log("Create/Update Memory Buffer:", Object.keys(activeCars).length, "cars.");
+        io.to('ADMIN_ROOM').emit('update_all_cars', activeCars);
     } catch (err) {
         console.error("Failed to load cars:", err);
     }
@@ -90,7 +84,6 @@ async function loadCarsBuffer() {
 loadCarsBuffer();
 
 
-// --- 1. API LOGIN ---
 app.post('/api/login', async (req, res) => {
     const { username, password } = req.body;
     try {
@@ -99,12 +92,10 @@ app.post('/api/login', async (req, res) => {
 
         const user = rows[0];
 
-        // Deteksi Perangkat
         const userAgent = req.headers['user-agent'] || '';
         const device = deviceDetector.parse(userAgent);
         const deviceInfo = `${device.os && device.os.name?device.os.name:'Unknown'} - ${device.client && device.client.name?device.client.name:'Client'}`;
 
-        // Cek jika peminjam punya rental PENDING atau ACTIVE
         let carId = null;
         if (user.role === 'PEMINJAM') {
             const [rentals] = await pool.query(
@@ -129,36 +120,30 @@ app.post('/api/login', async (req, res) => {
     }
 });
 
-// --- 2. ADMIN API: MANAJEMEN MOBIL ---
 const apiAuth = (req, res, next) => {
-    // Simple verification middleware
-    /* Implement real one if needed, relying on UI flow mostly safely for this MVP */
     next();
 };
 
-// GET ALL CARS (DB status)
 app.get('/api/cars', async (req, res) => {
     const [rows] = await pool.query("SELECT * FROM cars");
     res.json(rows);
 });
 
-// ADD CAR
 app.post('/api/cars', async (req, res) => {
-    const { name, plate_number, device_id, image_url } = req.body;
+    const { name, plate_number, device_id, image_url = null } = req.body;
     try {
         await pool.query("INSERT INTO cars (name, plate_number, device_id, image_url) VALUES (?, ?, ?, ?)", 
             [name, plate_number, device_id, image_url]);
         await loadCarsBuffer(); // Sync memory
         res.json({ message: 'Mobil ditambahkan' });
     } catch (e) {
+        console.error("Add Car Error:", e);
         res.status(500).json({ error: e.message });
     }
 });
 
-// DELETE CAR
 app.delete('/api/cars/:id', async (req, res) => {
     try {
-        // Also delete memory reference
         const [rows] = await pool.query("SELECT device_id FROM cars WHERE id = ?", [req.params.id]);
         if (rows.length > 0) delete activeCars[rows[0].device_id];
         
@@ -169,8 +154,6 @@ app.delete('/api/cars/:id', async (req, res) => {
     }
 });
 
-// GET AVAILABLE CARS (For Peminjam)
-// Also checks if user has pending request
 app.get('/api/cars/available', async (req, res) => {
     try {
         const [rows] = await pool.query("SELECT * FROM cars WHERE status = 'TERSEDIA'");
@@ -180,24 +163,18 @@ app.get('/api/cars/available', async (req, res) => {
     }
 });
 
-// RENTAL REQUEST
 app.post('/api/rentals', async (req, res) => {
     const { token, car_db_id } = req.body;
     try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
         await pool.query("INSERT INTO rentals (user_id, car_id, status) VALUES (?, ?, 'PENDING')", [decoded.userId, car_db_id]);
         
-        // Update status mobil jadi PENDING (biar gak dipesan orang lain)
-        // await pool.query("UPDATE cars SET status = 'PENDING' WHERE id = ?", [car_db_id]);
-        // await loadCarsBuffer();
-
         res.json({ message: 'Permintaan dikirim' });
     } catch (e) {
         res.status(500).json({ error: e.message });
     }
 });
 
-// RENTAL APPROVAL (ADMIN)
 app.get('/api/rentals/pending', async (req, res) => {
     const [rows] = await pool.query(
         `SELECT r.id, u.username, c.name, c.plate_number, r.status, r.created_at 
@@ -210,7 +187,7 @@ app.get('/api/rentals/pending', async (req, res) => {
 });
 
 app.post('/api/rentals/approve', async (req, res) => {
-    const { rental_id, action } = req.body; // action: 'APPROVE' or 'REJECT'
+    const { rental_id, action } = req.body;
     try {
         const [rentals] = await pool.query("SELECT * FROM rentals WHERE id = ?", [rental_id]);
         if (rentals.length === 0) return res.status(404).json({message: 'Not found'});
@@ -221,7 +198,6 @@ app.post('/api/rentals/approve', async (req, res) => {
             await pool.query("UPDATE cars SET status = 'DISEWA' WHERE id = ?", [rental.car_id]);
         } else {
             await pool.query("UPDATE rentals SET status = 'REJECTED' WHERE id = ?", [rental_id]);
-            // If we set car to PENDING earlier, revert it here.
         }
         await loadCarsBuffer();
         res.json({ message: 'Success' });
@@ -230,7 +206,6 @@ app.post('/api/rentals/approve', async (req, res) => {
     }
 });
 
-// USER CHECK STATUS
 app.get('/api/my-rental-status', async (req, res) => {
     const authHeader = req.headers.authorization;
     if (!authHeader) return res.status(401);
@@ -249,7 +224,6 @@ app.get('/api/my-rental-status', async (req, res) => {
 });
 
 
-// USER RETURN CAR
 app.post('/api/rentals/return', async (req, res) => {
     const authHeader = req.headers.authorization;
     if (!authHeader) return res.status(401).json({ message: 'Unauthorized' });
@@ -258,7 +232,6 @@ app.post('/api/rentals/return', async (req, res) => {
     try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
         
-        // Find active rental
         const [activeRentals] = await pool.query(
             "SELECT * FROM rentals WHERE user_id = ? AND status = 'ACTIVE' LIMIT 1", 
             [decoded.userId]
@@ -270,26 +243,29 @@ app.post('/api/rentals/return', async (req, res) => {
 
         const rental = activeRentals[0];
 
-        // Update Rental Status
         await pool.query(
             "UPDATE rentals SET status = 'COMPLETED', end_time = NOW() WHERE id = ?", 
             [rental.id]
         );
 
-        // Update Car Status
         await pool.query(
             "UPDATE cars SET status = 'TERSEDIA' WHERE id = ?", 
             [rental.car_id]
         );
 
-        // Update Memory
         const [carRows] = await pool.query("SELECT device_id FROM cars WHERE id = ?", [rental.car_id]);
         if (carRows.length > 0 && activeCars[carRows[0].device_id]) {
-            activeCars[carRows[0].device_id].status = 'TERSEDIA';
-            // Notify Admin
-            io.to('ADMIN_ROOM').emit('update_all_cars', activeCars);
+            const devId = carRows[0].device_id;
+            activeCars[devId].networkStatus = 'Offline';
+            activeCars[devId].connectedDevice = null;
+            activeCars[devId].speed = 0;
+            activeCars[devId].alert = 'SAFE';
+            activeCars[devId].lat = null;
+            activeCars[devId].lng = null;
         }
-
+        
+        await loadCarsBuffer();
+        
         res.json({ message: 'Mobil berhasil dikembalikan.' });
     } catch (e) {
         console.error(e);
@@ -297,36 +273,7 @@ app.post('/api/rentals/return', async (req, res) => {
     }
 });
 
-// --- 3. SOCKET & UDP LOGIC (SAME AS BEFORE BUT USING activeCars) ---
-const udpServer = dgram.createSocket('udp4');
-udpServer.on('message', (msg) => {
-    try {
-        const data = JSON.parse(msg.toString()); 
-        if (activeCars[data.carId]) {
-            const worker = new Worker('./src/worker_calc.js', { workerData: data });
-            worker.on('message', (calcResult) => {
-                activeCars[data.carId] = { 
-                    ...activeCars[data.carId], 
-                    ...data, 
-                    alert: calcResult.areaStatus,
-                    isOverSpeed: calcResult.isOverSpeed,
-                    lastSeen: new Date().toLocaleTimeString('id-ID'),
-                    networkStatus: data.networkStatus || '4G' // Expect client sending this
-                };
-
-                io.to('ADMIN_ROOM').emit('update_all_cars', activeCars);
-                io.to(`CAR_${data.carId}`).emit('update_my_car', activeCars[data.carId]);
-
-                if (calcResult.areaStatus === "OUT_OF_BOUNDS" || calcResult.isOverSpeed) {
-                    io.to('ADMIN_ROOM').emit('critical_alert', {
-                        msg: `PERINGATAN: ${data.carId} melanggar aturan!`,
-                        detail: calcResult
-                    });
-                }
-            });
-        }
-    } catch (e) { console.error(e); }
-});
+const udpServer = { bind: () => console.log("UDP Listener Disabled by User Request (Real-time Web GPS Only)") };
 
 io.use((socket, next) => {
     const token = socket.handshake.auth.token;
@@ -344,37 +291,40 @@ io.on('connection', async (socket) => {
     
     console.log(`[WS] Connect: ${user.role} (${user.userId})`);
 
-    // Speed Log Interval (Notification per 3s)
     let speedInterval = null;
 
     if (user.role === 'ADMIN') {
         socket.join('ADMIN_ROOM');
+        socket.emit('update_all_cars', activeCars);
     } 
     else {
-        // Find Active Rental for this User to determine which CAR they are using
         try {
+            console.log(`[WS] Checking active rental for User ${user.userId}...`);
             const [rows] = await pool.query(
                 "SELECT c.device_id FROM rentals r JOIN cars c ON r.car_id = c.id WHERE r.user_id = ? AND r.status = 'ACTIVE'", 
                 [user.userId]
             );
+            
+            console.log(`[WS] Rental Query Result for User ${user.userId}:`, rows);
 
             if (rows.length > 0) {
-                const carDeviceId = rows[0].device_id; // e.g. 'MOBIL_A'
+                const carDeviceId = rows[0].device_id;
+                console.log(`[WS] User ${user.userId} linked to Car ${carDeviceId}`);
+                
                 socket.join(`CAR_${carDeviceId}`);
                 
-                // Update Connected Device Info
                 if(activeCars[carDeviceId]) {
-                    // Update connection info
                     activeCars[carDeviceId].connectedDevice = user.device + ` [IP: ${socket.handshake.address.replace('::ffff:', '')}]`;
-                    io.to('ADMIN_ROOM').emit('update_all_cars', activeCars);
+                    activeCars[carDeviceId].networkStatus = 'Online';
                     
-                    // START SPEED LOGGING (Every 3 seconds)
-                    console.log(`[MONITOR] Starting speed log for ${carDeviceId}`);
+                    io.to('ADMIN_ROOM').emit('update_all_cars', activeCars);
+                    console.log(`[WS] ${carDeviceId} marked Online. Device: ${activeCars[carDeviceId].connectedDevice}`);
+                    
+                    if(speedInterval) clearInterval(speedInterval);
                     speedInterval = setInterval(() => {
                         if (activeCars[carDeviceId]) {
                             const currentSpeed = activeCars[carDeviceId].speed;
                             const logMsg = `[SPEED_LOG] ${carDeviceId} (User ${user.username}): ${currentSpeed} km/h`;
-                            // console.log(logMsg); // Reduce noise
                             
                             io.to('ADMIN_ROOM').emit('speed_log_notification', {
                                 carId: carDeviceId,
@@ -386,11 +336,12 @@ io.on('connection', async (socket) => {
                         }
                     }, 3000);
 
-                    // HANDLE CLIENT GPS
                     socket.on('client_gps_update', (gps) => {
                          if (activeCars[carDeviceId]) {
-                            // GPS speed is m/s -> convert to km/h
-                            // If gps.speed is null (stationary), use 0
+                            if (activeCars[carDeviceId].status !== 'DISEWA') {
+                                return;
+                            }
+
                             const speedKmh = Math.round((gps.speed || 0) * 3.6); 
                             
                             activeCars[carDeviceId] = {
@@ -402,22 +353,21 @@ io.on('connection', async (socket) => {
                                 networkStatus: 'Online (GPS)'
                             };
 
-                            // Broadcast updates
                             io.to('ADMIN_ROOM').emit('update_all_cars', activeCars);
-                            // We don't emit back to self (echo) usually, but for consistency:
-                            // io.to(`CAR_${carDeviceId}`).emit('update_my_car', activeCars[carDeviceId]);
                          }
                     });
+                } else {
+                    console.error(`[WS] ERROR: Car ${carDeviceId} not found in activeCars memory! Keys:`, Object.keys(activeCars));
                 }
+            } else {
+                console.log(`[WS] No ACTIVE rental found for User ${user.userId}`);
             }
         } catch (e) { console.error('WS Error:', e); }
     }
 
     socket.on('disconnect', () => {
         if (speedInterval) clearInterval(speedInterval);
-        // Clean up connectedDevice info? 
-        // We might keep it or clear it. Let's keep it for history or clear if strict.
-        // For now, no clear action required by prompt, but clearing interval is crucial.
+        console.log(`[WS] Disconnect: ${user.username}`);
     });
 });
 

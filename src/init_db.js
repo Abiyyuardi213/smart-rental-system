@@ -5,7 +5,6 @@ async function initDB() {
         const connection = await pool.getConnection();
         console.log("✅ Database Connected!");
 
-        // 1. Table Users
         await connection.query(`
             CREATE TABLE IF NOT EXISTS users (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -17,7 +16,6 @@ async function initDB() {
         `);
         console.log(" - Table 'users' ready.");
 
-        // 2. Table Cars
         await connection.query(`
             CREATE TABLE IF NOT EXISTS cars (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -31,7 +29,6 @@ async function initDB() {
         `);
         console.log(" - Table 'cars' ready.");
 
-        // 3. Table Rentals
         await connection.query(`
             CREATE TABLE IF NOT EXISTS rentals (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -47,8 +44,6 @@ async function initDB() {
         `);
         console.log(" - Table 'rentals' ready.");
 
-        // --- SEED DATA ---
-        // Check if Admin exists
         const [users] = await connection.query("SELECT * FROM users WHERE username = 'admin_rental'");
         if (users.length === 0) {
             await connection.query("INSERT INTO users (username, password, role) VALUES (?, ?, ?)", ['admin_rental', '123', 'ADMIN']);
@@ -61,7 +56,6 @@ async function initDB() {
             console.log(" - Seed Peminjam User created.");
         }
 
-        // Check if Cars exist
         const [cars] = await connection.query("SELECT * FROM cars");
         if (cars.length === 0) {
             await connection.query(`
