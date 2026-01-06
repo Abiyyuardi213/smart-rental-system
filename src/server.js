@@ -483,7 +483,7 @@ io.on('connection', async (socket) => {
         try {
             console.log(`[WS] Checking active rental for User ${user.userId}...`);
             const [rows] = await pool.query(
-                "SELECT c.device_id FROM rentals r JOIN cars c ON r.car_id = c.id WHERE r.user_id = ? AND r.status = 'ACTIVE'", 
+                "SELECT r.id as rental_id, c.device_id FROM rentals r JOIN cars c ON r.car_id = c.id WHERE r.user_id = ? AND r.status = 'ACTIVE'", 
                 [user.userId]
             );
             
@@ -491,7 +491,8 @@ io.on('connection', async (socket) => {
 
             if (rows.length > 0) {
                 const carDeviceId = rows[0].device_id;
-                console.log(`[WS] User ${user.userId} linked to Car ${carDeviceId}`);
+                const rentalId = rows[0].rental_id;
+                console.log(`[WS] User ${user.userId} linked to Car ${carDeviceId} (Rental #${rentalId})`);
                 
                 socket.join(`CAR_${carDeviceId}`);
                 
@@ -518,7 +519,7 @@ io.on('connection', async (socket) => {
                         }
                     }, 3000);
 
-                    socket.on('client_gps_update', (gps) => {
+                    socket.on('client_gps_update', async (gps) => {
                          if (activeCars[carDeviceId]) {
                             if (activeCars[carDeviceId].status !== 'DISEWA') {
                                 return;
@@ -534,6 +535,14 @@ io.on('connection', async (socket) => {
                                 lastSeen: new Date().toLocaleTimeString('id-ID'),
                                 networkStatus: 'Online (GPS)'
                             };
+
+                            // LOG TO DATABASE
+                            try {
+                                await pool.query(
+                                    "INSERT INTO trip_logs (rental_id, lat, lng, speed) VALUES (?, ?, ?, ?)",
+                                    [rentalId, gps.lat, gps.lng, speedKmh]
+                                );
+                            } catch (err) { console.error("Trip Log Error:", err.message); }
 
                             io.to('ADMIN_ROOM').emit('update_all_cars', activeCars);
                          }
@@ -551,6 +560,34 @@ io.on('connection', async (socket) => {
         if (speedInterval) clearInterval(speedInterval);
         console.log(`[WS] Disconnect: ${user.username}`);
     });
+});
+
+app.get('/api/rentals/history', async (req, res) => {
+    try {
+        const [rows] = await pool.query(
+            `SELECT r.id, u.name as user_name, c.name as car_name, c.plate_number, r.status, r.created_at, r.end_time 
+             FROM rentals r 
+             JOIN users u ON r.user_id = u.id 
+             JOIN cars c ON r.car_id = c.id 
+             WHERE r.status = 'COMPLETED' 
+             ORDER BY r.end_time DESC`
+        );
+        res.json(rows);
+    } catch (e) {
+        res.status(500).json({ message: e.message });
+    }
+});
+
+app.get('/api/rentals/:id/logs', async (req, res) => {
+    try {
+        const [rows] = await pool.query(
+            "SELECT lat, lng, speed, created_at FROM trip_logs WHERE rental_id = ? ORDER BY created_at ASC",
+            [req.params.id]
+        );
+        res.json(rows);
+    } catch (e) {
+        res.status(500).json({ message: e.message });
+    }
 });
 
 const HTTP_PORT = process.env.PORT_HTTP || 3000;

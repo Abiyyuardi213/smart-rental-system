@@ -13,6 +13,9 @@ const sidebarHTML = `
         <a href="armada.html" class="sidebar-link" id="link-armada">
             <i class="ph ph-car" style="font-size:18px;"></i> Armada Mobil
         </a>
+        <a href="riwayat.html" class="sidebar-link" id="link-riwayat">
+            <i class="ph ph-clock-counter-clockwise" style="font-size:18px;"></i> Riwayat
+        </a>
         <a href="peminjaman.html" class="sidebar-link" id="link-peminjaman">
             <i class="ph ph-receipt" style="font-size:18px;"></i> Peminjaman
             <span id="badge-peminjaman" class="badge badge-warning" style="margin-left:auto; display:none; font-size:11px;">0</span>
