@@ -146,6 +146,51 @@
 
     </div>
 
+    <!-- RENTAL CONFIRMATION MODAL -->
+    <div id="rental-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:2000; justify-content:center; align-items:center; backdrop-filter:blur(4px);">
+        <div class="card" style="width:400px; max-width:90%; padding:24px; animation: scaleIn 0.2s ease-out;">
+            <div style="text-align:center; margin-bottom:20px;">
+                <div style="width:64px; height:64px; background:#dbeafe; color:#2563eb; border-radius:50%; display:flex; align-items:center; justify-content:center; margin:0 auto 16px;">
+                    <i class="ph ph-steering-wheel" style="font-size:32px;"></i>
+                </div>
+                <h3 style="font-size:18px; font-weight:700; margin-bottom:8px;">Konfirmasi Sewa</h3>
+                <p style="color:var(--muted-foreground); margin:0;">Anda akan mengajukan sewa untuk:</p>
+            </div>
+            
+            <div style="background:var(--secondary); padding:16px; border-radius:8px; margin-bottom:24px; text-align:center;">
+                <h4 id="modal-car-name" style="margin:0 0 4px 0; font-size:16px;">Toyota Avanza</h4>
+                <div id="modal-car-plate" style="font-family:monospace; color:var(--muted-foreground);">B 1234 ABC</div>
+            </div>
+
+            <div style="display:flex; gap:12px;">
+                <button onclick="closeRentalModal()" class="btn" style="flex:1; background:var(--secondary); color:var(--foreground);">Batal</button>
+                <button id="btn-confirm-rental" onclick="confirmRental()" class="btn btn-primary" style="flex:1;">Ya, Sewa Sekarang</button>
+            </div>
+        </div>
+    </div>
+    <!-- RETURN CONFIRMATION MODAL -->
+    <div id="return-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:2000; justify-content:center; align-items:center; backdrop-filter:blur(4px);">
+        <div class="card" style="width:400px; max-width:90%; padding:24px; animation: scaleIn 0.2s ease-out;">
+            <div style="text-align:center; margin-bottom:20px;">
+                <div style="width:64px; height:64px; background:#fee2e2; color:#ef4444; border-radius:50%; display:flex; align-items:center; justify-content:center; margin:0 auto 16px;">
+                    <i class="ph ph-arrow-u-down-left" style="font-size:32px;"></i>
+                </div>
+                <h3 style="font-size:18px; font-weight:700; margin-bottom:8px;">Kembalikan Mobil?</h3>
+                <p style="color:var(--muted-foreground); margin:0;">Apakah Anda yakin ingin mengakhiri sesi sewa ini?</p>
+            </div>
+            
+            <div style="display:flex; gap:12px;">
+                <button onclick="closeReturnModal()" class="btn" style="flex:1; background:var(--secondary); color:var(--foreground);">Batal</button>
+                <button id="btn-confirm-return" onclick="confirmReturn()" class="btn btn-destructive" style="flex:1;">Ya, Kembalikan</button>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        #rental-modal.active, #return-modal.active { display: flex !important; }
+        @keyframes scaleIn { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+    </style>
+
     <script src="navbar.js"></script>
     <script>
         const token = localStorage.getItem('token');
@@ -201,6 +246,8 @@
             } catch (e) { console.error(e); }
         }
 
+        // ... existing code ...
+        
         async function loadAvailableCars() {
             const res = await fetch('/api/cars/available');
             const data = await res.json();
@@ -220,24 +267,66 @@
                         <h3 style="font-size:16px; font-weight:600; margin:0 0 4px 0;">${car.name}</h3>
                         <p style="margin:0; font-size:13px; color:var(--muted-foreground); font-family:monospace; background:var(--secondary); padding:4px 8px; border-radius:4px; display:inline-block;">${car.plate_number}</p>
                     </div>
-                    <button class="btn btn-primary" onclick="rentCar(${car.id})" style="margin-top:16px; width:100%;">Sewa Sekarang</button>
+                    <button class="btn btn-primary" onclick="openRentalModal('${car.id}', '${car.name}', '${car.plate_number}')" style="margin-top:16px; width:100%;">Sewa Sekarang</button>
                 </div>
             `).join('');
         }
 
-        async function rentCar(carId) {
-            if(!confirm("Ajukan sewa untuk mobil ini?")) return;
-            
-            const res = await fetch('/api/rentals', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ token, car_db_id: carId })
-            });
-            checkStatus();
+        let selectedCarId = null;
+
+        function openRentalModal(id, name, plate) {
+            selectedCarId = id;
+            document.getElementById('modal-car-name').innerText = name;
+            document.getElementById('modal-car-plate').innerText = plate;
+            document.getElementById('rental-modal').classList.add('active');
         }
 
-        async function finishRental() {
-            if (!confirm("Akhiri sesi sewa?")) return;
+        function closeRentalModal() {
+            document.getElementById('rental-modal').classList.remove('active');
+            selectedCarId = null;
+        }
+
+        async function confirmRental() {
+            if(!selectedCarId) return;
+            
+            const btn = document.getElementById('btn-confirm-rental');
+            btn.disabled = true;
+            btn.innerText = 'Memproses...';
+
+            try {
+                const res = await fetch('/api/rentals', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ token, car_db_id: selectedCarId })
+                });
+                
+                if (res.ok) {
+                    closeRentalModal();
+                    Swal.fire('Permintaan Terkirim', 'Mohon tunggu persetujuan admin.', 'success');
+                    checkStatus();
+                } else {
+                    Swal.fire('Gagal', 'Terjadi kesalahan.', 'error');
+                }
+            } catch (e) {
+                console.error(e);
+            } finally {
+                btn.disabled = false;
+                btn.innerText = 'Ya, Sewa Sekarang';
+            }
+        }
+
+        function finishRental() {
+            document.getElementById('return-modal').classList.add('active');
+        }
+        
+        function closeReturnModal() {
+            document.getElementById('return-modal').classList.remove('active');
+        }
+        
+        async function confirmReturn() {
+            const btn = document.getElementById('btn-confirm-return');
+            btn.disabled = true;
+            btn.innerText = 'Memproses...';
 
             try {
                 const res = await fetch('/api/rentals/return', {
@@ -246,12 +335,19 @@
                 });
                 
                 if (res.ok) {
-                    alert("Mobil berhasil dikembalikan!");
+                    closeReturnModal();
+                    Swal.fire('Berhasil', 'Mobil telah dikembalikan.', 'success');
                     checkStatus();
                 } else {
-                    alert("Gagal mengembalikan mobil.");
+                    Swal.fire('Gagal', 'Gagal memproses pengembalian.', 'error');
                 }
-            } catch (error) { console.error(error); }
+            } catch (error) { 
+                console.error(error); 
+                Swal.fire('Error', 'Terjadi kesalahan koneksi.', 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerText = 'Ya, Kembalikan';
+            }
         }
 
         let socket;

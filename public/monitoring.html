@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monitoring - Smart Rental Admin</title>
+    <link rel="stylesheet" href="main.css">
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="js/admin-layout.js"></script>
+</head>
+<body>
+
+    <div class="admin-layout">
+        <!-- Sidebar Container -->
+        <div id="sidebar-container"></div>
+
+        <!-- Main Content -->
+        <main class="admin-main">
+            <header class="admin-header">
+                <div>
+                    <h2 style="font-size:24px; font-weight:700; letter-spacing:-0.5px; margin:0 0 4px 0;">Monitoring Armada</h2>
+                    <p style="color:var(--muted-foreground); margin:0; font-size:14px;">Pantau lokasi dan status kendaraan secara real-time.</p>
+                </div>
+                <div class="user-avatar" style="background:var(--primary); color:white;">A</div>
+            </header>
+
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon blue"><i class="ph ph-car-profile"></i></div>
+                    <div><h4 style="margin:0; font-size:24px;" id="total-cars">0</h4><p style="margin:0; color:var(--muted-foreground); font-size:13px;">Total Armada</p></div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon green"><i class="ph ph-check-circle"></i></div>
+                    <div><h4 style="margin:0; font-size:24px;" id="ready-cars">0</h4><p style="margin:0; color:var(--muted-foreground); font-size:13px;">Tersedia</p></div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon red"><i class="ph ph-warning-circle"></i></div>
+                    <div><h4 style="margin:0; font-size:24px;" id="alert-cars">0</h4><p style="margin:0; color:var(--muted-foreground); font-size:13px;">Alerts</p></div>
+                </div>
+            </div>
+
+            <div class="card" style="padding:0; overflow:hidden; margin-bottom: 30px; border-radius:12px;">
+                <div id="map" style="height: 400px; width: 100%;"></div>
+            </div>
+
+            <h3 style="margin-bottom:16px;">Status Armada Live</h3>
+            <div id="car-list" class="monitor-grid"></div>
+
+        </main>
+    </div>
+
+    <script>
+        // Init Layout
+        initAdminLayout('monitoring');
+
+        const token = localStorage.getItem('token');
+
+        // --- MAP INIT ---
+        let map = L.map('map', {zoomControl: false}).setView([-6.2, 106.8], 10);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(map);
+        L.control.zoom({position: 'bottomright'}).addTo(map);
+        let markers = {};
+        let boundsInitialized = false;
+
+        // --- MONITORING SOCKET ---
+        const socket = io({ auth: { token } });
+        
+        socket.on('update_all_cars', (cars) => {
+            const container = document.getElementById('car-list');
+            if(!container) return;
+            container.innerHTML = '';
+            
+            let total = 0, ready = 0, alerts = 0;
+            const carArray = Object.values(cars);
+            total = carArray.length;
+            let activeLatLngs = [];
+
+            carArray.forEach(car => {
+                // Map Marker
+                if (car.lat && car.lng) {
+                    const lat = parseFloat(car.lat);
+                    const lng = parseFloat(car.lng);
+                    activeLatLngs.push([lat, lng]);
+
+                    const popupContent = `
+                        <div style="font-family:'Inter', sans-serif;">
+                            <b style="font-size:14px;">${car.name}</b><br>
+                            <span style="color:#64748b; font-size:12px;">${car.plate}</span><br>
+                            <div style="margin-top:4px; font-size:12px;">Kecepatan: <b>${car.speed} km/h</b></div>
+                        </div>
+                    `;
+
+                    if (markers[car.id]) {
+                        markers[car.id].setLatLng([lat, lng]).setPopupContent(popupContent);
+                    } else {
+                        markers[car.id] = L.marker([lat, lng]).addTo(map).bindPopup(popupContent);
+                    }
+                } else {
+                    if (markers[car.id]) { map.removeLayer(markers[car.id]); delete markers[car.id]; }
+                }
+
+                if(car.status === 'TERSEDIA') ready++;
+                if(car.alert === 'OUT_OF_BOUNDS' || car.isOverSpeed) alerts++;
+
+                // Status Badge Color
+                let statusBadge = `<span class="badge" style="background:#f4f4f5; color:#71717a">Offline</span>`;
+                if(car.status === 'TERSEDIA') statusBadge = `<span class="badge badge-success">Tersedia</span>`;
+                if(car.status === 'DISEWA') statusBadge = `<span class="badge" style="background:#dbeafe; color:#2563eb; border-color:#bfdbfe">Disewa</span>`;
+                if(car.alert === 'OUT_OF_BOUNDS') statusBadge = `<span class="badge badge-warning">Luar Zona</span>`;
+
+                const div = document.createElement('div');
+                div.className = 'monitor-card';
+                div.innerHTML = `
+                    <div style="display:flex; justify-content:space-between; align-items:start; margin-bottom:12px;">
+                        <div>
+                            <div style="font-weight:700; font-size:16px;">${car.name || car.id}</div>
+                            <div style="color:var(--muted-foreground); font-size:12px; font-family:monospace;">${car.plate}</div>
+                        </div>
+                        ${statusBadge}
+                    </div>
+                    
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; font-size:13px;">
+                        <div style="background:var(--background); padding:8px; border-radius:6px;">
+                            <div style="color:var(--muted-foreground); font-size:11px;">Kecepatan</div>
+                            <div style="font-weight:600; ${car.speed > 80 ? 'color:var(--destructive)' : ''}">${car.speed} km/h</div>
+                        </div>
+                        <div style="background:var(--background); padding:8px; border-radius:6px;">
+                            <div style="color:var(--muted-foreground); font-size:11px;">Sinyal</div>
+                            <div style="font-weight:600;">${car.networkStatus || '4G'}</div>
+                        </div>
+                        <div style="background:var(--background); padding:8px; border-radius:6px; grid-column: span 2;">
+                           <div style="color:var(--muted-foreground); font-size:11px;">Perangkat</div>
+                           <div style="display:flex; align-items:center; gap:6px;">
+                               <i class="ph ph-device-mobile" style="color:var(--primary)"></i>
+                               <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:200px;">${car.connectedDevice || '-'}</span>
+                           </div>
+                        </div>
+                    </div>
+
+                    ${(car.alert === 'OUT_OF_BOUNDS' || car.speed > 100) ? `
+                        <div style="margin-top: 12px; padding: 10px; background: #fee2e2; border-radius: 6px; color: var(--destructive); font-size: 12px; display: flex; align-items: center; gap: 8px;">
+                            <i class="ph ph-warning-circle" style="font-size: 16px;"></i>
+                            <b>PERINGATAN:</b> ${car.alert === 'OUT_OF_BOUNDS' ? 'Mobil Keluar Zona Aman!' : 'Kecepatan Tinggi!'}
+                        </div>
+                    ` : ''}
+                `;
+                container.appendChild(div);
+            });
+
+            if (activeLatLngs.length > 0 && !boundsInitialized) {
+                map.fitBounds(L.latLngBounds(activeLatLngs), { padding: [50, 50], maxZoom: 15 });
+                boundsInitialized = true;
+            }
+
+            document.getElementById('total-cars').innerText = total;
+            document.getElementById('ready-cars').innerText = ready;
+            document.getElementById('alert-cars').innerText = alerts;
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Armada - Smart Rental Admin</title>
+    <link rel="stylesheet" href="main.css">
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="js/admin-layout.js"></script>
+    <style>
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 2000; justify-content: center; align-items: center; backdrop-filter: blur(4px); }
+        .modal.active { display: flex; }
+    </style>
+</head>
+<body>
+
+    <div class="admin-layout">
+        <div id="sidebar-container"></div>
+
+        <main class="admin-main">
+            <header class="admin-header">
+                <div>
+                    <h2 style="font-size:24px; font-weight:700; letter-spacing:-0.5px; margin:0 0 4px 0;">Armada Mobil</h2>
+                    <p style="color:var(--muted-foreground); margin:0; font-size:14px;">Kelola daftar kendaraan dan perangkat IoT.</p>
+                </div>
+                <div class="user-avatar" style="background:var(--primary); color:white;">A</div>
+            </header>
+
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:24px;">
+                <h3 style="margin:0;">Daftar Mobil</h3>
+                <button class="btn btn-primary" onclick="openCarModal()">+ Tambah Mobil</button>
+            </div>
+            
+            <div class="card" style="padding:0; overflow:hidden;">
+                <table class="data-table">
+                    <thead><tr><th>Kendaraan</th><th>Plat Nomor</th><th>Device ID</th><th>Status</th><th>Aksi</th></tr></thead>
+                    <tbody id="cars-table-body">
+                         <tr><td colspan="5" style="text-align:center; padding:40px;">Memuat data...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </main>
+    </div>
+
+    <!-- MODAL ADD/EDIT CAR -->
+    <div id="car-modal" class="modal">
+        <div class="card" style="width:400px; max-width:90%; padding:24px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                <h3 style="margin:0;" id="modal-title">Tambah Mobil Baru</h3>
+                <button onclick="closeModal()" style="background:none; border:none; cursor:pointer;"><i class="ph ph-x" style="font-size:20px;"></i></button>
+            </div>
+            
+            <div style="display:grid; gap:16px;">
+                <input type="hidden" id="car-id">
+                
+                <div>
+                    <label class="form-label">Nama Mobil</label>
+                    <input type="text" id="car-name" class="form-input" placeholder="Contoh: Toyota Avanza">
+                </div>
+                <div>
+                     <label class="form-label">Plat Nomor</label>
+                     <input type="text" id="car-plate" class="form-input" placeholder="B 1234 ABC">
+                </div>
+                <div>
+                     <label class="form-label">Device ID (IoT)</label>
+                     <input type="text" id="car-device" class="form-input" placeholder="MOBIL_01">
+                </div>
+                <div>
+                     <label class="form-label">Foto Mobil</label>
+                     <input type="file" id="car-image" class="form-input" accept="image/*" style="padding-top:8px;">
+                     <div id="current-image-preview" style="margin-top:8px; display:none;">
+                        <small style="color:var(--muted-foreground)">Foto saat ini:</small><br>
+                        <img id="img-preview" src="" style="height:60px; border-radius:4px; margin-top:4px;">
+                     </div>
+                </div>
+                <button onclick="saveCar()" id="btn-save" class="btn btn-primary" style="margin-top:8px; width:100%;">Simpan Data</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        initAdminLayout('armada');
+        const token = localStorage.getItem('token');
+        let allCars = [];
+
+        async function loadCarsTable() {
+            try {
+                const res = await fetch('/api/cars', { headers: { 'Authorization': 'Bearer ' + token } });
+                allCars = await res.json();
+                
+                const tbody = document.getElementById('cars-table-body');
+                if(allCars.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:40px; color:var(--muted-foreground);">Belum ada data armada.</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = allCars.map(c => `
+                    <tr>
+                        <td>
+                            <div style="display:flex; align-items:center; gap:12px;">
+                                <img src="${c.image_url || 'https://via.placeholder.com/40'}" style="width:40px; height:40px; border-radius:6px; object-fit:cover;">
+                                <b>${c.name}</b>
+                            </div>
+                        </td>
+                        <td><span style="font-family:monospace; background:var(--secondary); padding:2px 6px; border-radius:4px; font-size:13px;">${c.plate_number}</span></td>
+                        <td>${c.device_id}</td>
+                        <td><span class="badge ${c.status === 'TERSEDIA' ? 'badge-success':'badge-warning'}">${c.status}</span></td>
+                        <td>
+                            <div class="action-bt-group">
+                                <button class="action-btn" onclick="openCarModal('${c.id}')" title="Edit"><i class="ph ph-pencil-simple"></i></button>
+                                <button class="action-btn btn-red" onclick="deleteCar('${c.id}')" title="Hapus"><i class="ph ph-trash"></i></button>
+                            </div>
+                        </td>
+                    </tr>
+                `).join('');
+            } catch (e) { console.error(e); }
+        }
+
+        function closeModal() {
+            document.getElementById('car-modal').classList.remove('active');
+        }
+
+        function openCarModal(id = null) {
+            document.getElementById('car-modal').classList.add('active');
+            const title = document.getElementById('modal-title');
+            const btn = document.getElementById('btn-save');
+            const preview = document.getElementById('current-image-preview');
+            const imgPreview = document.getElementById('img-preview');
+            document.getElementById('car-image').value = ''; // clear file input
+
+            if (id) {
+                // EDIT MODE
+                const car = allCars.find(c => c.id == id);
+                if(!car) return;
+
+                document.getElementById('car-id').value = car.id;
+                document.getElementById('car-name').value = car.name;
+                document.getElementById('car-plate').value = car.plate_number;
+                document.getElementById('car-device').value = car.device_id;
+                
+                title.innerText = 'Edit Mobil';
+                btn.innerText = 'Perbarui Data';
+
+                if(car.image_url) {
+                    preview.style.display = 'block';
+                    imgPreview.src = car.image_url;
+                } else {
+                    preview.style.display = 'none';
+                }
+            } else {
+                // ADD MODE
+                document.getElementById('car-id').value = '';
+                document.getElementById('car-name').value = '';
+                document.getElementById('car-plate').value = '';
+                document.getElementById('car-device').value = '';
+                
+                title.innerText = 'Tambah Mobil Baru';
+                btn.innerText = 'Simpan Data';
+                preview.style.display = 'none';
+            }
+        }
+        
+        async function saveCar() {
+            const id = document.getElementById('car-id').value;
+            const name = document.getElementById('car-name').value;
+            const plate = document.getElementById('car-plate').value;
+            const device = document.getElementById('car-device').value;
+            const imageInput = document.getElementById('car-image');
+
+            if(!name || !plate || !device) return Swal.fire('Error', 'Mohon lengkapi data utama', 'error');
+
+            const btn = document.getElementById('btn-save');
+            const originalText = btn.innerText;
+            btn.innerText = 'Menyimpan...';
+            btn.disabled = true;
+
+            const formData = new FormData();
+            formData.append('name', name);
+            formData.append('plate_number', plate);
+            formData.append('device_id', device);
+            if(imageInput.files[0]) formData.append('image', imageInput.files[0]);
+
+            const method = id ? 'PUT' : 'POST';
+            const url = id ? `/api/cars/${id}` : '/api/cars';
+
+            try {
+                const res = await fetch(url, {
+                    method: method,
+                    headers: {'Authorization': 'Bearer ' + token},
+                    body: formData
+                });
+                
+                if(res.ok) {
+                    Swal.fire('Berhasil', id ? 'Data mobil diperbarui' : 'Mobil ditambahkan', 'success');
+                    closeModal();
+                    loadCarsTable();
+                } else {
+                    let errorMessage = 'Terjadi kesalahan saat menyimpan';
+                    try {
+                        const d = await res.json();
+                        errorMessage = d.error || d.message || errorMessage;
+                    } catch (err) {
+                        errorMessage = `Error ${res.status}: ${res.statusText}`;
+                    }
+                    Swal.fire('Gagal', errorMessage, 'error');
+                }
+            } catch(e) { 
+                console.error(e); 
+                Swal.fire('Error', 'Gagal menghubungi server', 'error');
+            } finally {
+                btn.innerText = originalText;
+                btn.disabled = false;
+            }
+        }
+
+        async function deleteCar(id) {
+            Swal.fire({
+                title: 'Hapus Mobil?', text: "Data tidak bisa dikembalikan.", icon: 'warning',
+                showCancelButton: true, confirmButtonColor: '#ef4444', cancelButtonColor: '#f4f4f5', confirmButtonText: 'Ya, Hapus'
+            }).then(async (res) => {
+                if(res.isConfirmed) {
+                    await fetch(`/api/cars/${id}`, { method: 'DELETE', headers: { 'Authorization': 'Bearer ' + token } });
+                    loadCarsTable();
+                    Swal.fire('Terhapus', 'Mobil telah dihapus', 'success');
+                }
+            });
+        }
+
+        loadCarsTable();
+    </script>
+</body>
+</html>

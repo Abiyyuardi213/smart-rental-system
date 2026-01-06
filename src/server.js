@@ -294,6 +294,36 @@ app.post('/api/cars', upload.single('image'), async (req, res) => {
     }
 });
 
+app.put('/api/cars/:id', upload.single('image'), async (req, res) => {
+    const { name, plate_number, device_id } = req.body;
+    const id = req.params.id;
+    
+    try {
+        let query = "UPDATE cars SET name = ?, plate_number = ?, device_id = ?";
+        let params = [name, plate_number, device_id];
+
+        if (req.file) {
+            query += ", image_url = ?";
+            params.push('/uploads/' + req.file.filename);
+        }
+
+        query += " WHERE id = ?";
+        params.push(id);
+
+        await pool.query(query, params);
+        
+        // Update in-memory buffer if device_id changed or simply to refresh properties
+        // Ideally we should remove the old key if device_id changed, but loadCarsBuffer handles refresh
+        // For simplicity, just reload all.
+        await loadCarsBuffer();
+
+        res.json({ message: 'Data mobil diperbarui' });
+    } catch (e) {
+        console.error("Update Car Error:", e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
 app.delete('/api/cars/:id', async (req, res) => {
     try {
         const [rows] = await pool.query("SELECT device_id FROM cars WHERE id = ?", [req.params.id]);

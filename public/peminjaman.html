@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Peminjaman - Smart Rental Admin</title>
+    <link rel="stylesheet" href="main.css">
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="js/admin-layout.js"></script>
+</head>
+<body>
+
+    <div class="admin-layout">
+        <div id="sidebar-container"></div>
+
+        <main class="admin-main">
+            <header class="admin-header">
+                <div>
+                    <h2 style="font-size:24px; font-weight:700; letter-spacing:-0.5px; margin:0 0 4px 0;">Peminjaman</h2>
+                    <p style="color:var(--muted-foreground); margin:0; font-size:14px;">Kelola permintaan peminjaman dan pengembalian.</p>
+                </div>
+                <div class="user-avatar" style="background:var(--primary); color:white;">A</div>
+            </header>
+
+            <h3 style="margin-bottom:24px;">Permintaan Tertunda</h3>
+            <div class="card" style="padding:0; overflow:hidden;">
+                <table class="data-table">
+                    <thead><tr><th>Peminjam</th><th>Kendaraan</th><th>Status</th><th>Waktu</th><th>Aksi</th></tr></thead>
+                    <tbody id="rentals-table-body">
+                         <tr><td colspan="5" style="text-align:center; padding:40px;">Memuat data...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        initAdminLayout('peminjaman');
+        const token = localStorage.getItem('token');
+
+        async function loadRentals() {
+            try {
+                const res = await fetch('/api/rentals/pending', { headers: { 'Authorization': 'Bearer ' + token } });
+                const data = await res.json();
+                
+                const tbody = document.getElementById('rentals-table-body');
+                if(data.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 40px; color:var(--muted-foreground)">Tidak ada permintaan baru.</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = data.map(r => `
+                    <tr>
+                        <td><b>${r.username || 'Unknown'}</b></td>
+                        <td>${r.name}<br><span style="color:var(--muted-foreground); font-size:12px;">${r.plate_number}</span></td>
+                        <td><span class="badge badge-warning">${r.status}</span></td>
+                        <td>${new Date(r.created_at).toLocaleString('id-ID')}</td>
+                        <td>
+                            <div class="action-bt-group">
+                                <button class="action-btn btn-green" onclick="processRental('${r.id}', 'APPROVE')" title="Terima"><i class="ph ph-check"></i></button>
+                                <button class="action-btn btn-red" onclick="processRental('${r.id}', 'REJECT')" title="Tolak"><i class="ph ph-x"></i></button>
+                            </div>
+                        </td>
+                    </tr>
+                `).join('');
+            } catch(e) { console.error(e); }
+        }
+
+        async function processRental(id, action) {
+             const res = await fetch('/api/rentals/approve', {
+                 method: 'POST',
+                 headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                 body: JSON.stringify({ rental_id: id, action })
+             });
+             if(res.ok) {
+                 Swal.fire('Berhasil', 'Status diperbarui', 'success');
+                 loadRentals();
+                 updateBadges(); // refresh sidebar count
+             } else {
+                 Swal.fire('Gagal', 'Gagal memproses permintaan', 'error');
+             }
+        }
+
+        loadRentals();
+    </script>
+</body>
+</html>
