@@ -525,14 +525,48 @@ io.on('connection', async (socket) => {
                                 return;
                             }
 
-                            const speedKmh = Math.round((gps.speed || 0) * 3.6); 
+                            const now = Date.now();
+                            let calculatedSpeed = 0;
+                            const car = activeCars[carDeviceId];
+
+                            // START: Manual Speed Calculation Logic
+                            if (car.lat && car.lng && car.lastUpdateTimestamp) {
+                                const timeDiff = (now - car.lastUpdateTimestamp) / 1000; // seconds
+                                
+                                // Only calculate if at least 1 second has passed to avoid division by zero or extreme spikes
+                                if (timeDiff >= 1) {
+                                    const R = 6371; // Radius of the earth in km
+                                    const dLat = (gps.lat - car.lat) * (Math.PI / 180);
+                                    const dLon = (gps.lng - car.lng) * (Math.PI / 180);
+                                    const a = 
+                                        Math.sin(dLat/2) * Math.sin(dLat/2) +
+                                        Math.cos(car.lat * (Math.PI / 180)) * Math.cos(gps.lat * (Math.PI / 180)) * 
+                                        Math.sin(dLon/2) * Math.sin(dLon/2);
+                                    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
+                                    const distance = R * c; // Distance in km
+                                    
+                                    // Speed in km/h = Distance (km) / Time (hours)
+                                    calculatedSpeed = distance / (timeDiff / 3600);
+                                    
+                                    // Filter Noise: If avg speed is unrealistically high (> 200 km/h) due to GPS jump, ignore or clamp?
+                                    // Or if distance is very small (GPS drift), set to 0.
+                                    if(distance < 0.002) calculatedSpeed = 0; // Less than 2 meters moved
+                                } else {
+                                    // If time diff is too small, assume previous speed or 0
+                                    calculatedSpeed = car.speed || 0;
+                                }
+                            }
+                            
+                            const finalSpeed = Math.round(calculatedSpeed);
+                            // END: Manual Speed Calculation Logic
                             
                             activeCars[carDeviceId] = {
                                 ...activeCars[carDeviceId],
                                 lat: gps.lat,
                                 lng: gps.lng,
-                                speed: speedKmh,
+                                speed: finalSpeed,
                                 lastSeen: new Date().toLocaleTimeString('id-ID'),
+                                lastUpdateTimestamp: now,
                                 networkStatus: 'Online (GPS)'
                             };
 
@@ -540,9 +574,12 @@ io.on('connection', async (socket) => {
                             try {
                                 await pool.query(
                                     "INSERT INTO trip_logs (rental_id, lat, lng, speed) VALUES (?, ?, ?, ?)",
-                                    [rentalId, gps.lat, gps.lng, speedKmh]
+                                    [rentalId, gps.lat, gps.lng, finalSpeed]
                                 );
                             } catch (err) { console.error("Trip Log Error:", err.message); }
+
+                            // SEND FULL CAR UPDATE BACK TO DRIVER (includes calculated speed & alerts)
+                            socket.emit('update_my_car', activeCars[carDeviceId]);
 
                             io.to('ADMIN_ROOM').emit('update_all_cars', activeCars);
                          }
