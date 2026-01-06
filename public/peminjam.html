@@ -4,130 +4,201 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard Saya - Smart Rental</title>
-    <link rel="stylesheet" href="main.css">
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="/socket.io/socket.io.js"></script>
+    <link rel="stylesheet" href="main.css">
     <style>
-        body { padding-top: 20px; background: var(--dark-bg); min-height: 100vh; display: flex; justify-content: center; }
-        .mobile-limit { width: 100%; max-width: 480px; padding: 20px; }
-        
-        .view-section { display: none; animation: fadeIn 0.4s; }
-        .view-section.active { display: block; }
+        .view-section { animation: fadeIn 0.3s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
 
-        .book-card {
-            background: var(--card-bg);
-            border-radius: 16px;
-            padding: 16px;
-            margin-bottom: 12px;
-            border: 1px solid rgba(0,0,0,0.05);
+        /* Gauge styles local unless moved to main.css */
+        .gauge-container {
+            width: 220px; height: 220px;
+            margin: 0 auto 24px;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            background: conic-gradient(from 180deg, var(--primary) 0%, var(--secondary) 0%);
+            transition: background 0.5s ease-out;
+        }
+        
+        .gauge-inner {
+            position: absolute;
+            width: 180px; height: 180px;
+            background: var(--card);
+            border-radius: 50%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.05);
+        }
+        
+        .status-hero {
+            max-width: 500px;
+            margin: 40px auto;
+            text-align: center;
+        }
+        
+        .car-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 20px;
+        }
+
+        .car-item {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 20px;
             display: flex;
             justify-content: space-between;
             align-items: center;
-        }
-        .book-card h3 { font-size: 1rem; color: var(--text-main); margin-bottom: 4px; }
-        .book-card p { font-size: 0.8rem; color: var(--text-muted); }
-
-        .status-box {
-            text-align: center;
-            background: var(--card-bg);
-            padding: 40px 20px;
-            border-radius: 20px;
-            border: 1px solid rgba(0,0,0,0.1);
+            transition: border-color 0.2s, transform 0.2s;
         }
 
-        .speed-gauge {
-            width: 200px; height: 200px; border-radius: 50%;
-            background: conic-gradient(from 180deg, var(--primary) 0%, rgba(200,200,200,0.3) 0%);
-            margin: 0 auto 20px; display: flex; align-items: center; justify-content: center; position: relative;
+        .car-item:hover {
+            border-color: var(--primary);
+            transform: translateY(-2px);
         }
-        .speed-gauge::after { content: ''; position: absolute; width: 160px; height: 160px; background: var(--card-bg); border-radius: 50%; }
-        .speed-value { position: relative; z-index: 2; font-size: 3.5rem; font-weight: 800; color: var(--text-main); line-height: 1; }
     </style>
 </head>
 <body>
-    <div class="mobile-limit">
-        <header style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
-            <h2 style="color:var(--text-main);">Smart Rental</h2>
-            <button onclick="logout()" style="background:none; border:none; color:var(--danger); font-size:1.5rem;"><i class="ph ph-sign-out"></i></button>
-        </header>
 
-        <div id="view-browse" class="view-section">
-            <h3 style="color:var(--text-muted); margin-bottom:15px">Pilih Mobil</h3>
-            <div id="available-list">
-                 <p style="color: gray; text-align: center;">Memuat daftar mobil...</p>
+    <div class="container">
+        <!-- Navbar Placeholder -->
+        <div id="navbar-container"></div>
+
+        <!-- Warning Banner -->
+        <div id="account-pending-warning" style="display:none; background:#fff7ed; border:1px solid #fed7aa; padding:16px; border-radius:var(--radius); margin-bottom:24px; display:flex; gap:12px; align-items:start;">
+             <i class="ph ph-warning-circle" style="color:#f97316; font-size:20px; padding-top:2px;"></i>
+             <div>
+                 <h4 style="margin:0 0 4px 0; color:#9a3412; font-size:14px;">Akun Belum Dikonfirmasi</h4>
+                 <p style="margin:0; font-size:13px; color:#c2410c; line-height:1.4;">
+                     Beberapa fitur dibatasi hingga Admin menyetujui akun Anda.
+                 </p>
+             </div>
+        </div>
+
+        <!-- VIEW: BROWSE (Home) -->
+        <div id="view-home" class="view-section" style="display:block;">
+            
+            <!-- Sub-view: Car List -->
+            <div id="view-browse">
+                <div style="margin-bottom: 20px;">
+                    <h2 style="font-size: 20px; font-weight: 600; letter-spacing:-0.5px;">Pilih Mobil</h2>
+                    <p style="color: var(--muted-foreground); font-size: 14px;">Armada tersedia untuk disewa hari ini.</p>
+                </div>
+                <div id="available-list" class="car-grid">
+                     <div style="grid-column: 1/-1; text-align:center; padding: 40px; color: var(--muted-foreground);">
+                         <i class="ph ph-spinner-gap" style="font-size: 24px; animation: spin 1s infinite linear;"></i><br>Nomuat data...
+                     </div>
+                </div>
+            </div>
+
+            <!-- VIEW: PENDING RENTAL -->
+            <div id="view-pending" class="status-hero card" style="display:none;">
+                <div style="width:64px; height:64px; background:#fef3c7; border-radius:50%; display:flex; align-items:center; justify-content:center; margin:0 auto 20px;">
+                    <i class="ph ph-hourglass-high" style="font-size: 32px; color: #d97706;"></i>
+                </div>
+                <h2 style="font-size: 18px; font-weight: 600; margin-bottom: 8px;">Menunggu Persetujuan</h2>
+                <p style="color: var(--muted-foreground); font-size: 14px; line-height:1.5;">Admin sedang memproses permintaan sewa Anda.<br>Mohon tunggu notifikasi selanjutnya.</p>
+                <div style="margin-top:24px;">
+                   <button onclick="checkStatus()" class="btn btn-primary">Cek Status Terbaru</button>
+                </div>
+            </div>
+
+            <!-- VIEW: ACTIVE MONITOR -->
+            <div id="view-monitor" class="status-hero card" style="display:none; max-width: 600px;">
+                 <h2 id="car-title" style="margin:0; font-size:20px; font-weight:700;">--</h2>
+                 <div class="badge badge-success" style="margin: 8px 0 24px;">SEDANG DISEWA</div>
+                 
+                 <div class="gauge-container" id="gauge">
+                     <div class="gauge-inner">
+                         <div class="speed-value" id="speed" style="font-size: 48px; font-weight: 800; line-height:1;">0</div>
+                         <span style="font-size: 13px; color: var(--muted-foreground); font-weight:500;">KM/H</span>
+                     </div>
+                 </div>
+                 
+                 <div id="alert-box" style="display:none; padding:12px; background: #fef2f2; border: 1px solid #fee2e2; border-radius:var(--radius); color: var(--destructive); margin-bottom:20px; font-size:14px; font-weight:500;">
+                      ⚠️ <span id="alert-msg">PERINGATAN!</span>
+                 </div>
+                 
+                 <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:24px;">
+                      <div style="background:var(--secondary); padding:12px; border-radius:var(--radius);">
+                          <div style="font-size:12px; color:var(--muted-foreground);">Plat Nomor</div>
+                          <div id="car-plate" style="font-weight:600; font-family:monospace;">--</div>
+                      </div>
+                      <div style="background:var(--secondary); padding:12px; border-radius:var(--radius);">
+                          <div style="font-size:12px; color:var(--muted-foreground);">GPS Status</div>
+                          <div id="gps-status" style="font-weight:600; color:var(--primary);">Menunggu...</div>
+                      </div>
+                 </div>
+
+                 <button onclick="finishRental()" class="btn btn-destructive" style="width:100%;">
+                     Kembalikan Mobil
+                 </button>
             </div>
         </div>
 
-        <div id="view-pending" class="view-section">
-            <div class="status-box">
-                <i class="ph ph-hourglass-high" style="font-size: 4rem; color: var(--warning); margin-bottom: 20px;"></i>
-                <h2 style="color:var(--text-main); margin-bottom: 10px;">Menunggu Konfirmasi</h2>
-                <p style="color: var(--text-muted);">Admin sedang memproses permintaan sewa Anda. Mohon tunggu sejenak.</p>
-                <div style="margin-top:20px;">
-                   <button onclick="checkStatus()" class="btn">Cek Status Lagi</button>
-                </div>
-            </div>
-        </div>
-
-        <div id="view-monitor" class="view-section">
-             <div class="glass-panel status-box" style="text-align:center; padding: 30px;">
-                <h2 id="car-title" style="margin-bottom: 5px; color: var(--primary);">--</h2>
-                <p id="car-plate" style="color: var(--text-muted); margin-bottom: 30px;">--</p>
-
-                <div class="speed-gauge" id="gauge">
-                    <div style="text-align: center;">
-                        <div class="speed-value" id="speed">0</div>
-                        <span style="font-size: 0.8rem; color:gray">KM/H</span>
-                    </div>
-                </div>
-                
-                <div id="alert-box" style="display:none; padding:15px; background: rgba(239,68,68,0.2); border: 1px solid var(--danger); border-radius:10px; color: var(--danger); margin-top:20px;">
-                     ⚠️ <b>PERINGATAN!</b><br><span id="alert-msg"></span>
-                </div>
-
-                <div style="margin-top:20px; font-size:0.8rem; color:var(--text-muted); background:rgba(0,0,0,0.02); padding:10px; border-radius:8px;">
-                     <div>Status GPS: <span id="gps-status" style="font-weight:bold">Menunggu...</span></div>
-                     <div id="gps-coords" style="font-family:monospace; margin-top:4px;">-</div>
-                </div>
-
-                <div style="margin-top: 30px;">
-                    <button onclick="finishRental()" class="btn btn-danger" style="width:100%; padding: 15px;">
-                        <i class="ph ph-arrow-u-up-left" style="font-size: 1.2em; vertical-align: middle;"></i> 
-                        <span style="vertical-align: middle;">Kembalikan Mobil</span>
-                    </button>
-                </div>
-            </div>
-        </div>
-    
     </div>
 
+    <script src="navbar.js"></script>
     <script>
         const token = localStorage.getItem('token');
         if (!token) window.location.href = '/';
 
-        function logout() { localStorage.removeItem('token'); window.location.href = '/'; }
-        
+        // Initialize Navbar
+        renderNavbar('home');
+
+        // Status Logic
+        async function fetchProfileForHeader() {
+            // Need to fetch profile just to update the name in header and handle generic account status
+            try {
+                const res = await fetch('/api/profile', { headers: { 'Authorization': 'Bearer ' + token } });
+                const user = await res.json();
+                updateHeaderUser(user.name || user.username);
+
+                const warningEl = document.getElementById('account-pending-warning');
+                if (user.status === 'PENDING') {
+                    warningEl.style.display = 'flex';
+                } else {
+                    warningEl.style.display = 'none';
+                    localStorage.removeItem('accountStatus');
+                }
+            } catch(e) {}
+        }
+
         async function checkStatus() {
             try {
+                fetchProfileForHeader();
+
                 const res = await fetch('/api/my-rental-status', { headers: { 'Authorization': 'Bearer ' + token } });
                 const data = await res.json();
                 
-                document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
+                // Reset views
+                document.getElementById('view-browse').style.display = 'none';
+                document.getElementById('view-pending').style.display = 'none';
+                document.getElementById('view-monitor').style.display = 'none';
                 
                 if (data.status !== 'ACTIVE') stopGPS();
 
                 if (data.status === 'ACTIVE') {
-                    document.getElementById('view-monitor').classList.add('active');
+                    document.getElementById('view-monitor').style.display = 'block';
+                    document.getElementById('view-home').style.display = 'block'; // wrapper
                     startSocket();
                 } else if (data.status === 'PENDING') {
-                    document.getElementById('view-pending').classList.add('active');
+                    document.getElementById('view-pending').style.display = 'block';
+                    document.getElementById('view-home').style.display = 'block';
                 } else {
-                    document.getElementById('view-browse').classList.add('active');
+                    document.getElementById('view-browse').style.display = 'block';
+                    document.getElementById('view-home').style.display = 'block';
                     loadAvailableCars();
                 }
-            } catch (e) {
-                console.error(e);
-            }
+            } catch (e) { console.error(e); }
         }
 
         async function loadAvailableCars() {
@@ -136,17 +207,20 @@
             const container = document.getElementById('available-list');
             
             if(data.length === 0) {
-                container.innerHTML = '<p style="text-align:center; color:#555">Tidak ada mobil tersedia.</p>';
+                container.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:40px; color:gray">Tidak ada mobil tersedia.</div>';
                 return;
             }
 
             container.innerHTML = data.map(car => `
-                <div class="book-card">
-                    <div>
-                        <h3>${car.name}</h3>
-                        <p>${car.plate_number}</p>
+                <div class="car-item card" style="display:flex; flex-direction:column; padding:16px;">
+                    <div style="width:100%; height:140px; background:var(--secondary); border-radius:6px; overflow:hidden; margin-bottom:16px;">
+                         <img src="${car.image_url || 'https://via.placeholder.com/300x200?text=No+Image'}" style="width:100%; height:100%; object-fit:cover;">
                     </div>
-                    <button class="btn" style="padding: 8px 16px;" onclick="rentCar(${car.id})">Sewa</button>
+                    <div style="flex:1;">
+                        <h3 style="font-size:16px; font-weight:600; margin:0 0 4px 0;">${car.name}</h3>
+                        <p style="margin:0; font-size:13px; color:var(--muted-foreground); font-family:monospace; background:var(--secondary); padding:4px 8px; border-radius:4px; display:inline-block;">${car.plate_number}</p>
+                    </div>
+                    <button class="btn btn-primary" onclick="rentCar(${car.id})" style="margin-top:16px; width:100%;">Sewa Sekarang</button>
                 </div>
             `).join('');
         }
@@ -163,15 +237,12 @@
         }
 
         async function finishRental() {
-            if (!confirm("Apakah Anda yakin ingin mengembalikan mobil ini? Sesi sewa akan berakhir.")) return;
+            if (!confirm("Akhiri sesi sewa?")) return;
 
             try {
                 const res = await fetch('/api/rentals/return', {
                     method: 'POST',
-                    headers: { 
-                        'Content-Type': 'application/json',
-                        'Authorization': 'Bearer ' + token
-                    }
+                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }
                 });
                 
                 if (res.ok) {
@@ -180,10 +251,7 @@
                 } else {
                     alert("Gagal mengembalikan mobil.");
                 }
-            } catch (error) {
-                console.error("Error returning car:", error);
-                alert("Terjadi kesalahan koneksi.");
-            }
+            } catch (error) { console.error(error); }
         }
 
         let socket;
@@ -195,8 +263,8 @@
                 document.getElementById('car-plate').innerText = car.plate;
                 document.getElementById('speed').innerText = car.speed;
                 
-                const val = Math.min((car.speed / 140) * 100, 100) / 2; 
-                document.getElementById('gauge').style.background = `conic-gradient(from 180deg, var(--primary) ${val}%, rgba(200,200,200,0.3) 0%)`;
+                const val = Math.min((car.speed / 140) * 100, 100); 
+                document.getElementById('gauge').style.background = `conic-gradient(from 180deg, var(--primary) ${val}%, var(--secondary) 0%)`;
 
                 const alertBox = document.getElementById('alert-box');
                 if (car.alert === "OUT_OF_BOUNDS") {
@@ -209,80 +277,38 @@
                     alertBox.style.display = 'none';
                 }
             });
-
             startGPS();
         }
 
         let watchId = null; 
-        
         function stopGPS() {
-             if (watchId !== null) {
-                navigator.geolocation.clearWatch(watchId);
-                watchId = null;
-                console.log("GPS Stopped");
-            }
+             if (watchId !== null) { navigator.geolocation.clearWatch(watchId); watchId = null; }
         }
 
         function startGPS() {
             stopGPS();
-            
             const statusEl = document.getElementById('gps-status');
-            const coordsEl = document.getElementById('gps-coords');
-            
-            if (!navigator.geolocation) {
-                statusEl.innerText = "Tidak Didukung";
-                statusEl.style.color = 'red';
-                return;
-            }
+            if (!navigator.geolocation) { statusEl.innerText = "Tidak Didukung"; statusEl.style.color = 'red'; return; }
 
-            if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-                 const httpsPort = 3443; 
-                 const httpsUrl = `https://${window.location.hostname}:${httpsPort}${window.location.pathname}`;
-                 
-                 statusEl.innerHTML = `⚠️ <b>Akses Ditolak Browser</b><br>
-                                       GPS butuh koneksi Aman (HTTPS).<br>
-                                       <a href="${httpsUrl}" class="btn" style="background:var(--success); color:white; display:block; margin-top:8px; text-decoration:none; padding:8px; font-size:0.9rem;">
-                                         <i class="ph ph-lock-key"></i> PINDAH KE HTTPS
-                                       </a>`;
-                 statusEl.style.color = '#dc2626';
-                 return;
-            }
-
-            statusEl.innerText = "Mencari Lokasi...";
-            statusEl.style.color = 'orange';
+            statusEl.innerText = "Mencari...";
+            statusEl.style.color = '#eab308';
 
             watchId = navigator.geolocation.watchPosition(
                 (pos) => {
-                    const { latitude, longitude, speed, altitude, accuracy } = pos.coords;
-                    
-                    statusEl.innerText = "Terhubung (Akurasi: " + Math.round(accuracy) + "m)";
-                    statusEl.style.color = 'green';
-                    coordsEl.innerHTML = `Lat: ${latitude.toFixed(6)}<br>Lng: ${longitude.toFixed(6)}<br>Alt: ${altitude ? altitude.toFixed(1) : '-'} m`;
-
+                    const { latitude, longitude, speed, altitude } = pos.coords;
+                    statusEl.innerText = "Terhubung"; statusEl.style.color = '#16a34a';
                     if(socket) {
-                        socket.emit('client_gps_update', { 
-                            lat: latitude, 
-                            lng: longitude, 
-                            speed: speed,
-                            alt: altitude
-                        });
+                        socket.emit('client_gps_update', { lat: latitude, lng: longitude, speed: speed, alt: altitude });
                     }
                 }, 
-                (err) => {
-                    console.error("GPS Error:", err);
-                    let msg = "Gagal Mengakses GPS";
-                    if (err.code === 1) msg = "Izin Ditolak User";
-                    if (err.code === 2) msg = "Sinyal GPS Lemah";
-                    if (err.code === 3) msg = "Timeout";
-                    
-                    statusEl.innerText = msg;
-                    statusEl.style.color = 'red';
-                }, 
+                (err) => { statusEl.innerText = "Gagal"; statusEl.style.color = '#dc2626'; }, 
                 { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
             );
         }
 
+        // Init
         checkStatus();
+
     </script>
 </body>
 </html>

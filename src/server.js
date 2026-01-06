@@ -88,10 +88,11 @@ app.post('/api/login', async (req, res) => {
     const { username, password } = req.body;
     try {
         const [rows] = await pool.query("SELECT * FROM users WHERE username = ? AND password = ?", [username, password]);
-        if (rows.length === 0) return res.status(401).json({ message: 'Login Gagal' });
+        if (rows.length === 0) return res.status(401).json({ message: 'Login Gagal: Username atau Password salah' });
 
         const user = rows[0];
 
+        // Device detection
         const userAgent = req.headers['user-agent'] || '';
         const device = deviceDetector.parse(userAgent);
         const deviceInfo = `${device.os && device.os.name?device.os.name:'Unknown'} - ${device.client && device.client.name?device.client.name:'Client'}`;
@@ -109,12 +110,162 @@ app.post('/api/login', async (req, res) => {
 
         const token = jwt.sign({ 
             userId: user.id, 
-            role: user.role, 
+            role: user.role,
+            status: user.status, // Include status in token
             carId: carId,
             device: deviceInfo
         }, process.env.JWT_SECRET, { expiresIn: '24h' });
 
-        res.json({ token, role: user.role, device: deviceInfo });
+        res.json({ 
+            token, 
+            role: user.role, 
+            status: user.status, // Send status to client
+            name: user.name,
+            device: deviceInfo 
+        });
+    } catch (e) {
+        res.status(500).json({ message: e.message });
+    }
+});
+
+// Register Endpoint
+app.post('/api/register', async (req, res) => {
+    const { name, email, username, password } = req.body;
+    try {
+        // Validation
+        if (!name || !email || !username || !password) {
+            return res.status(400).json({ message: 'Semua field harus diisi' });
+        }
+
+        // Check duplicate
+        const [existing] = await pool.query("SELECT * FROM users WHERE username = ? OR email = ?", [username, email]);
+        if (existing.length > 0) {
+            return res.status(400).json({ message: 'Username atau Email sudah terdaftar' });
+        }
+
+        await pool.query(
+            "INSERT INTO users (name, email, username, password, role, status) VALUES (?, ?, ?, ?, 'PEMINJAM', 'PENDING')",
+            [name, email, username, password]
+        );
+
+        res.json({ message: 'Registrasi berhasil! Silakan login untuk melihat status akun Anda.' });
+    } catch (e) {
+        res.status(500).json({ message: e.message });
+    }
+});
+
+// Profile Endpoints
+app.get('/api/profile', async (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) return res.status(401).json({ message: 'Unauthorized' });
+    const token = authHeader.split(" ")[1];
+
+    try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const [rows] = await pool.query("SELECT id, name, username, email, phone, address, profile_pic, status, role FROM users WHERE id = ?", [decoded.userId]);
+        
+        if (rows.length === 0) return res.status(404).json({ message: 'User not found' });
+        res.json(rows[0]);
+    } catch (e) {
+        res.status(500).json({ message: e.message });
+    }
+});
+
+const multer = require('multer');
+
+
+// Multer Storage Configuration
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        cb(null, 'public/uploads/');
+    },
+    filename: (req, file, cb) => {
+        cb(null, 'profile-' + Date.now() + path.extname(file.originalname));
+    }
+});
+
+const upload = multer({ 
+    storage: storage,
+    limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+    fileFilter: (req, file, cb) => {
+        const filetypes = /jpeg|jpg|png|webp/;
+        const mimetype = filetypes.test(file.mimetype);
+        const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
+        if (mimetype && extname) return cb(null, true);
+        cb(new Error("Hanya diperbolehkan format gambar (jpeg, jpg, png, webp)"));
+    }
+});
+
+// Profile Picture Upload Endpoint
+app.post('/api/profile/upload-pic', upload.single('profile_pic'), async (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) return res.status(401).json({ message: 'Unauthorized' });
+    const token = authHeader.split(" ")[1];
+
+    if (!req.file) return res.status(400).json({ message: 'Tidak ada file yang diunggah' });
+
+    try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const fileUrl = '/uploads/' + req.file.filename;
+
+        await pool.query(
+            "UPDATE users SET profile_pic = ? WHERE id = ?",
+            [fileUrl, decoded.userId]
+        );
+
+        res.json({ message: 'Foto profil diperbarui', profile_pic: fileUrl });
+    } catch (e) {
+        console.error("Upload Error:", e);
+        res.status(500).json({ message: e.message });
+    }
+});
+
+app.post('/api/profile/update', async (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) return res.status(401).json({ message: 'Unauthorized' });
+    const token = authHeader.split(" ")[1];
+
+    // profile_pic might be passed if manually setting a URL, but typically handled by upload-pic now
+    const { name, phone, address, profile_pic } = req.body;
+
+    try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        
+        // Dynamic update query to handle optional fields
+        let query = "UPDATE users SET name = ?, phone = ?, address = ?";
+        let params = [name, phone, address];
+
+        if (profile_pic !== undefined) {
+             query += ", profile_pic = ?";
+             params.push(profile_pic);
+        }
+
+        query += " WHERE id = ?";
+        params.push(decoded.userId);
+
+        await pool.query(query, params);
+        res.json({ message: 'Profil berhasil diperbarui' });
+    } catch (e) {
+        res.status(500).json({ message: e.message });
+    }
+});
+
+// Admin User Management Endpoints
+app.get('/api/admin/users', async (req, res) => {
+    try {
+        const [rows] = await pool.query("SELECT id, name, username, email, status, role, created_at FROM users WHERE role = 'PEMINJAM' ORDER BY created_at DESC");
+        res.json(rows);
+    } catch (e) {
+        res.status(500).json({ message: e.message });
+    }
+});
+
+app.post('/api/admin/users/verify', async (req, res) => {
+    const { user_id, action } = req.body; // action: 'APPROVE' or 'REJECT'
+    try {
+        const status = action === 'APPROVE' ? 'ACTIVE' : 'REJECTED';
+        await pool.query("UPDATE users SET status = ? WHERE id = ?", [status, user_id]);
+        res.json({ message: `User status updated to ${status}` });
     } catch (e) {
         res.status(500).json({ message: e.message });
     }
@@ -129,8 +280,9 @@ app.get('/api/cars', async (req, res) => {
     res.json(rows);
 });
 
-app.post('/api/cars', async (req, res) => {
-    const { name, plate_number, device_id, image_url = null } = req.body;
+app.post('/api/cars', upload.single('image'), async (req, res) => {
+    const { name, plate_number, device_id } = req.body;
+    const image_url = req.file ? '/uploads/' + req.file.filename : null;
     try {
         await pool.query("INSERT INTO cars (name, plate_number, device_id, image_url) VALUES (?, ?, ?, ?)", 
             [name, plate_number, device_id, image_url]);

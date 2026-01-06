@@ -2,243 +2,357 @@
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Login - Smart Rental</title>
     <link rel="stylesheet" href="main.css">
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
     <style>
+        /* Shadcn / Tailwind System Inspired */
+        :root {
+            --background: #ffffff;
+            --foreground: #09090b;
+            --card: #ffffff;
+            --card-foreground: #09090b;
+            --popover: #ffffff;
+            --popover-foreground: #09090b;
+            --primary: #18181b;
+            --primary-foreground: #fafafa;
+            --secondary: #f4f4f5;
+            --secondary-foreground: #18181b;
+            --muted: #f4f4f5;
+            --muted-foreground: #71717a;
+            --accent: #f4f4f5;
+            --accent-foreground: #18181b;
+            --destructive: #ef4444;
+            --destructive-foreground: #fafafa;
+            --border: #e4e4e7;
+            --input: #e4e4e7;
+            --ring: #18181b;
+            --radius: 0.5rem;
+        }
+
         body {
             margin: 0;
             padding: 0;
-            font-family: 'Inter', sans-serif;
-            background: #f3f4f6;
-            overflow: hidden;
+            font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: var(--background);
+            color: var(--foreground);
+            height: 100vh;
+            width: 100vw;
             display: flex;
             justify-content: center;
             align-items: center;
-            height: 100vh;
-            position: relative;
+            overflow: hidden;
         }
 
-        .bg-shape {
+        /* Subtle Grid Pattern Background */
+        .background-container {
             position: absolute;
-            border-radius: 50%;
-            filter: blur(80px);
+            inset: 0;
             z-index: -1;
-            opacity: 0.6;
-            animation: float 10s infinite alternate;
-        }
-        .shape-1 {
-            width: 400px; height: 400px;
-            background: #3b82f6;
-            top: -100px; left: -100px;
-        }
-        .shape-2 {
-            width: 300px; height: 300px;
-            background: #8b5cf6;
-            bottom: -50px; right: -50px;
-            animation-duration: 8s;
-        }
-        .shape-3 {
-            width: 200px; height: 200px;
-            background: #10b981;
-            bottom: 20%; left: 20%;
-            animation-duration: 12s;
+            background-size: 40px 40px;
+            background-image: linear-gradient(to right, #f4f4f5 1px, transparent 1px),
+                              linear-gradient(to bottom, #f4f4f5 1px, transparent 1px);
+            mask-image: radial-gradient(circle at center, black 40%, transparent 100%);
+            -webkit-mask-image: radial-gradient(circle at center, black 40%, transparent 100%);
         }
 
-        @keyframes float {
-            0% { transform: translate(0, 0); }
-            100% { transform: translate(30px, 50px); }
+        .main-wrapper {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow-y: auto;
+            padding: 20px;
+            box-sizing: border-box;
         }
 
         .login-card {
             width: 100%;
-            max-width: 420px;
-            padding: 40px;
-            background: rgba(255, 255, 255, 0.7);
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
-            border-radius: 24px;
-            border: 1px solid rgba(255, 255, 255, 0.8);
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
-            animation: slideUp 0.8s cubic-bezier(0.2, 0.8, 0.2, 1);
+            max-width: 400px;
+            margin: auto;
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+            padding: 24px; /* p-6 */
+            animation: cardEntrance 0.5s ease-out forwards;
         }
 
-        @keyframes slideUp {
-            from { opacity: 0; transform: translateY(40px); }
+        @keyframes cardEntrance {
+            from { opacity: 0; transform: translateY(10px); }
             to { opacity: 1; transform: translateY(0); }
         }
 
-        .brand-header {
+        .brand-section {
             text-align: center;
-            margin-bottom: 30px;
+            margin-bottom: 24px; /* space-y-6 roughly */
         }
-        
-        .brand-icon {
+
+        .logo-container {
             display: inline-flex;
-            width: 70px;
-            height: 70px;
-            background: linear-gradient(135deg, #3b82f6, #2563eb);
-            color: white;
-            border-radius: 20px;
-            align-items: center;
             justify-content: center;
-            font-size: 32px;
-            box-shadow: 0 10px 20px -5px rgba(59, 130, 246, 0.5);
-            margin-bottom: 15px;
+            align-items: center;
+            width: 48px;
+            height: 48px;
+            background: var(--primary);
+            color: var(--primary-foreground);
+            border-radius: var(--radius);
+            margin-bottom: 16px;
+            font-size: 24px;
         }
 
-        .brand-header h2 {
-            font-family: 'Outfit', sans-serif;
-            font-size: 28px;
+        .brand-title {
+            font-size: 24px; /* text-2xl */
+            font-weight: 600; /* font-semibold */
+            letter-spacing: -0.025em; /* tracking-tight */
             margin: 0;
-            color: #1f2937;
-        }
-        
-        .brand-header p {
-            margin: 5px 0 0;
-            color: #6b7280;
-            font-size: 14px;
         }
 
-        .input-group {
-            margin-bottom: 20px;
-            position: relative;
+        .brand-subtitle {
+            font-size: 14px; /* text-sm */
+            color: var(--muted-foreground);
+            margin-top: 6px;
         }
 
-        .input-group label {
-            display: block;
+        .form-group {
+            margin-bottom: 16px; /* space-y-2 -> gap roughly */
+        }
+
+        .form-label {
+            font-size: 14px; /* text-sm */
+            font-weight: 500; /* font-medium */
+            line-height: 1;
             margin-bottom: 8px;
-            font-weight: 500;
-            color: #374151;
-            font-size: 14px;
+            display: block;
         }
 
-        .input-wrapper {
+        .input-container {
             position: relative;
         }
 
-        .input-wrapper i {
+        .form-input {
+            display: flex;
+            width: 100%;
+            height: 40px; /* h-10 */
+            padding: 8px 12px 8px 36px; /* px-3 py-2, left padding for icon */
+            border-radius: var(--radius);
+            border: 1px solid var(--input);
+            background-color: transparent;
+            font-size: 14px; /* text-sm */
+            color: var(--foreground);
+            box-sizing: border-box;
+            transition: border-color 0.15s, box-shadow 0.15s;
+        }
+
+        .form-input::placeholder {
+            color: var(--muted-foreground);
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: var(--ring);
+            box-shadow: 0 0 0 2px rgba(24, 24, 27, 0.1); /* ring-offset-background ring-2 ring-ring */
+        }
+
+        .input-icon {
             position: absolute;
-            left: 14px;
+            left: 10px;
             top: 50%;
             transform: translateY(-50%);
-            color: #9ca3af;
-            font-size: 18px;
-            transition: color 0.3s;
-        }
-
-        .input-wrapper input {
-            width: 100%;
-            padding: 12px 12px 12px 42px;
-            border: 2px solid #e5e7eb;
-            border-radius: 12px;
-            font-size: 15px;
-            outline: none;
-            transition: all 0.3s;
-            background: rgba(255, 255, 255, 0.8);
-            color: #1f2937;
-        }
-
-        .input-wrapper input:focus {
-            border-color: #3b82f6;
-            background: white;
-            box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1);
-        }
-
-        .input-wrapper input:focus + i {
-            color: #3b82f6;
-        }
-
-        .btn-login {
-            width: 100%;
-            padding: 14px;
-            background: linear-gradient(135deg, #2563eb, #1d4ed8);
-            color: white;
-            border: none;
-            border-radius: 12px;
+            color: var(--muted-foreground);
             font-size: 16px;
-            font-weight: 600;
+            pointer-events: none;
+        }
+
+        .btn-submit {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            height: 40px; /* h-10 */
+            border-radius: var(--radius);
+            font-size: 14px; /* text-sm */
+            font-weight: 500; /* font-medium */
+            background-color: var(--primary);
+            color: var(--primary-foreground);
+            border: none;
             cursor: pointer;
-            transition: all 0.3s;
-            box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.3);
-            margin-top: 10px;
+            transition: background-color 0.15s;
+            margin-top: 8px;
         }
 
-        .btn-login:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 20px -5px rgba(37, 99, 235, 0.5);
-        }
-
-        .btn-login:active {
-            transform: translateY(0);
-        }
-
-        #error-msg {
-            min-height: 20px;
-            margin-top: 15px;
-            font-size: 0.9rem;
-            text-align: center;
-            color: #ef4444;
-            opacity: 0;
-            transition: opacity 0.3s;
+        .btn-submit:hover {
+            background-color: rgba(24, 24, 27, 0.9); /* primary/90 */
         }
         
-        .footer-text {
-            text-align: center;
-            margin-top: 30px;
-            font-size: 12px;
-            color: #9ca3af;
+        .btn-submit:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
         }
 
-        /* Mobile Responsive */
-        @media (max-width: 480px) {
+        .error-message {
+            margin-top: 12px;
+            padding: 12px;
+            background: #fef2f2;
+            border: 1px solid #fee2e2;
+            color: var(--destructive);
+            border-radius: var(--radius);
+            font-size: 13px;
+            font-weight: 500;
+            display: none; /* Hidden by default */
+            align-items: center;
+            gap: 8px;
+        }
+        .error-message.visible { display: flex; }
+
+        .footer {
+            margin-top: 24px;
+            text-align: center;
+            font-size: 12px;
+            color: var(--muted-foreground);
+        }
+
+        a {
+            color: var(--primary);
+            font-weight: 500;
+            text-decoration: underline;
+            text-underline-offset: 4px;
+            cursor: pointer;
+        }
+        
+        /* Mobile specific adjustments */
+        @media (max-width: 640px) {
             .login-card {
-                padding: 30px;
-                margin: 20px;
+                border: none;
+                box-shadow: none;
+                background: transparent;
+                padding: 0;
+            }
+            .main-wrapper {
+                align-items: flex-start;
+                padding-top: 40px;
             }
         }
     </style>
 </head>
 <body>
 
-    <div class="bg-shape shape-1"></div>
-    <div class="bg-shape shape-2"></div>
-    <div class="bg-shape shape-3"></div>
+    <div class="background-container">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
+        <div class="blob blob-3"></div>
+    </div>
 
-    <div class="login-card">
-        <div class="brand-header">
-            <div class="brand-icon">
-                <i class="ph ph-car-profile"></i>
+    <div class="main-wrapper">
+        <div class="login-card" id="login-form">
+            <div class="brand-section">
+                <div class="logo-container">
+                    <i class="ph ph-car-profile"></i>
+                </div>
+                <div style="text-align: center;">
+                    <h1 class="brand-title">Smart Rental</h1>
+                    <p class="brand-subtitle">Silakan masuk untuk melanjutkan</p>
+                </div>
             </div>
-            <h2>Smart Rental</h2>
-            <p>Admin & User Monitoring Dashboard</p>
+
+            <div class="form-group">
+                <label class="form-label">Username</label>
+                <div class="input-container">
+                    <input type="text" id="user" class="form-input" placeholder="Masukkan username anda" autocomplete="off">
+                    <i class="ph ph-user input-icon"></i>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Password</label>
+                <div class="input-container">
+                    <input type="password" id="pass" class="form-input" placeholder="••••••••">
+                    <i class="ph ph-lock-key input-icon"></i>
+                </div>
+            </div>
+
+            <div id="error-msg" class="error-message">
+                <i class="ph ph-warning-circle" style="font-size: 18px;"></i>
+                <span id="error-text">Login gagal</span>
+            </div>
+
+            <button onclick="doLogin()" id="login-btn" class="btn-submit">
+                Masuk Dashboard <i class="ph ph-arrow-right" style="vertical-align: middle; margin-left: 5px;"></i>
+            </button>
+
+            <div style="text-align: center; margin-top: 20px;">
+                <span style="color: #6b7280; font-size: 14px;">Belum punya akun?</span>
+                <a href="#" onclick="toggleForm()" style="color: #2563eb; font-weight: 600; text-decoration: none; margin-left: 5px;">Daftar Sekarang</a>
+            </div>
+
+            <div class="footer">
+                &copy; 2026 Smart Rental System
+            </div>
         </div>
 
-        <div class="input-group">
-            <label>Username</label>
-            <div class="input-wrapper">
-                <input type="text" id="user" placeholder="Masukkan username" autocomplete="off">
-                <i class="ph ph-user"></i>
+        <!-- Register Form -->
+        <div class="login-card" id="register-form" style="display: none; animation: none;">
+            <div class="brand-section">
+                <div class="logo-container" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%);">
+                    <i class="ph ph-user-plus"></i>
+                </div>
+                <div style="text-align: center;">
+                    <h1 class="brand-title">Buat Akun</h1>
+                    <p class="brand-subtitle">Isi data diri untuk mendaftar</p>
+                </div>
             </div>
-        </div>
 
-        <div class="input-group">
-            <label>Password</label>
-            <div class="input-wrapper">
-                <input type="password" id="pass" placeholder="Masukkan password">
-                <i class="ph ph-lock-key"></i>
+            <div class="form-group">
+                <label class="form-label">Nama Lengkap</label>
+                <div class="input-container">
+                    <input type="text" id="reg-name" class="form-input" placeholder="Nama Lengkap" autocomplete="off">
+                    <i class="ph ph-identification-card input-icon"></i>
+                </div>
             </div>
-        </div>
 
-        <button onclick="doLogin()" class="btn-login" id="login-btn">
-            Masuk Sekarang <i class="ph ph-arrow-right" style="vertical-align: middle; margin-left: 5px;"></i>
-        </button>
+            <div class="form-group">
+                <label class="form-label">Email</label>
+                <div class="input-container">
+                    <input type="email" id="reg-email" class="form-input" placeholder="email@contoh.com" autocomplete="off">
+                    <i class="ph ph-envelope input-icon"></i>
+                </div>
+            </div>
 
-        <p id="error-msg">Error message goes here</p>
+            <div class="form-group">
+                <label class="form-label">Username</label>
+                <div class="input-container">
+                    <input type="text" id="reg-user" class="form-input" placeholder="Username unik" autocomplete="off">
+                    <i class="ph ph-user input-icon"></i>
+                </div>
+            </div>
 
-        <div class="footer-text">
-            &copy; 2026 Smart Rental System. All rights reserved.
+            <div class="form-group">
+                <label class="form-label">Password</label>
+                <div class="input-container">
+                    <input type="password" id="reg-pass" class="form-input" placeholder="••••••••">
+                    <i class="ph ph-lock-key input-icon"></i>
+                </div>
+            </div>
+
+            <div id="reg-error-msg" class="error-message">
+                <i class="ph ph-warning-circle" style="font-size: 18px;"></i>
+                <span id="reg-error-text">Registrasi gagal</span>
+            </div>
+
+            <button onclick="doRegister()" id="reg-btn" class="btn-submit" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%);">
+                Daftar Akun <i class="ph ph-check-circle" style="vertical-align: middle; margin-left: 5px;"></i>
+            </button>
+
+            <div style="text-align: center; margin-top: 20px;">
+                <span style="color: #6b7280; font-size: 14px;">Sudah punya akun?</span>
+                <a href="#" onclick="toggleForm()" style="color: #10b981; font-weight: 600; text-decoration: none; margin-left: 5px;">Masuk Disini</a>
+            </div>
+
+            <div class="footer">
+                &copy; 2026 Smart Rental System
+            </div>
         </div>
     </div>
 
@@ -247,20 +361,91 @@
             if (e.key === 'Enter') doLogin();
         });
 
+        function toggleForm() {
+            const loginForm = document.getElementById('login-form');
+            const registerForm = document.getElementById('register-form');
+            
+            if (loginForm.style.display === 'none') {
+                loginForm.style.display = 'block';
+                loginForm.style.animation = 'cardEntrance 0.6s cubic-bezier(0.2, 0.8, 0.2, 1)';
+                registerForm.style.display = 'none';
+            } else {
+                loginForm.style.display = 'none';
+                registerForm.style.display = 'block';
+                registerForm.style.animation = 'cardEntrance 0.6s cubic-bezier(0.2, 0.8, 0.2, 1)';
+            }
+        }
+
+        async function doRegister() {
+            const name = document.getElementById('reg-name').value;
+            const email = document.getElementById('reg-email').value;
+            const username = document.getElementById('reg-user').value;
+            const password = document.getElementById('reg-pass').value;
+            
+            const btn = document.getElementById('reg-btn');
+            const errBox = document.getElementById('reg-error-msg');
+            const errText = document.getElementById('reg-error-text');
+
+            errBox.classList.remove('visible');
+            btn.innerHTML = `<i class="ph ph-spinner-gap" style="animation: spin 1s linear infinite; vertical-align: middle;"></i> Mendaftarkan...`;
+            btn.disabled = true;
+
+            try {
+                const res = await fetch('/api/register', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ name, email, username, password })
+                });
+                
+                const data = await res.json();
+                
+                if (res.ok) {
+                    btn.innerHTML = `Berhasil! Login...`;
+                    setTimeout(() => {
+                         toggleForm();
+                         // Pre-fill username
+                         document.getElementById('user').value = username;
+                         document.getElementById('error-msg').classList.add('visible');
+                         document.getElementById('error-msg').style.background = '#dcfce7'; // green-100
+                         document.getElementById('error-msg').style.borderColor = '#bbf7d0'; // green-200
+                         document.getElementById('error-msg').style.color = '#15803d'; // green-700
+                         document.getElementById('error-text').innerText = "Registrasi Berhasil! Silakan Login.";
+                         btn.innerHTML = `Daftar Akun`;
+                         btn.disabled = false;
+                    }, 1000);
+                } else {
+                    throw new Error(data.message);
+                }
+            } catch (e) {
+                errText.innerText = e.message;
+                errBox.classList.add('visible');
+                btn.innerHTML = `Daftar Akun`;
+                btn.disabled = false;
+            }
+        }
+
         async function doLogin() {
             const username = document.getElementById('user').value;
             const password = document.getElementById('pass').value;
             const btn = document.getElementById('login-btn');
-            const err = document.getElementById('error-msg');
+            const errBox = document.getElementById('error-msg');
+            const errText = document.getElementById('error-text');
 
-            err.style.opacity = '0';
-            btn.innerHTML = `<i class="ph ph-spinner-gap" style="animation: spin 1s linear infinite"></i> Memuat...`;
-            btn.style.opacity = '0.7';
+            // Reset state
+            errBox.classList.remove('visible');
+            // Reset error style to default red
+            errBox.style.background = '#fef2f2';
+            errBox.style.borderColor = '#fee2e2';
+            errBox.style.color = '#ef4444';
+
+            btn.innerHTML = `<i class="ph ph-spinner-gap" style="animation: spin 1s linear infinite; vertical-align: middle;"></i> Memproses...`;
             btn.disabled = true;
 
-            await new Promise(r => setTimeout(r, 600));
+            await new Promise(r => setTimeout(r, 600)); // Short simulated delay
 
             try {
+                if(!username || !password) throw new Error("Mohon isi username dan password.");
+
                 const res = await fetch('/api/login', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -271,22 +456,28 @@
                 
                 if (data.token) {
                     localStorage.setItem('token', data.token);
-                    btn.innerHTML = `<i class="ph ph-check-circle"></i> Berhasil!`;
-                    btn.style.background = "#10b981";
                     
+                    // Success state
+                    btn.innerHTML = `Login Berhasil!`;
+                    
+                    if (data.status === 'PENDING') {
+                        localStorage.setItem('accountStatus', 'PENDING');
+                    } else {
+                        localStorage.removeItem('accountStatus');
+                    }
+
                     setTimeout(() => {
-                        if (data.role === 'ADMIN') window.location.href = '/admin.html';
-                        else window.location.href = '/peminjam.html';
+                        window.location.href = (data.role === 'ADMIN') ? '/admin.html' : '/peminjam.html';
                     }, 500);
                 } else {
-                    throw new Error(data.message || "Login Gagal");
+                    throw new Error(data.message || "Username atau password salah");
                 }
             } catch (e) {
-                err.innerText = e.message || "Gagal terhubung ke server.";
-                err.style.opacity = '1';
-                btn.innerHTML = `Masuk Sekarang <i class="ph ph-arrow-right" style="vertical-align: middle; margin-left: 5px;"></i>`;
-                btn.style.background = "";
-                btn.style.opacity = '1';
+                // Error state
+                errText.innerText = e.message || "Terjadi kesalahan koneksi";
+                errBox.classList.add('visible');
+                
+                btn.innerHTML = `Masuk Dashboard <i class="ph ph-arrow-right" style="vertical-align: middle; margin-left: 5px;"></i>`;
                 btn.disabled = false;
             }
         }
@@ -294,6 +485,12 @@
     
     <style>
         @keyframes spin { 100% { transform: rotate(360deg); } }
+        @keyframes shake {
+            10%, 90% { transform: translate3d(-1px, 0, 0); }
+            20%, 80% { transform: translate3d(2px, 0, 0); }
+            30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
+            40%, 60% { transform: translate3d(4px, 0, 0); }
+        }
     </style>
 </body>
 </html>
