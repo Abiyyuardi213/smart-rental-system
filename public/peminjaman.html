@@ -112,7 +112,11 @@
                         </tr>
                     `;
                 }).join('');
-            } catch(e) { console.error(e); }
+            } catch(e) { 
+                console.error(e);
+                const tbody = document.getElementById('processed-table-body');
+                if(tbody) tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding:20px; color:var(--destructive);">Gagal memuat data: ${e.message}</td></tr>`;
+            }
         }
 
         async function processRental(id, action) {
