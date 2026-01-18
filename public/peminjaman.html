@@ -32,6 +32,15 @@
                     </tbody>
                 </table>
             </div>
+            <h3 style="margin-bottom:16px; margin-top: 40px;">Riwayat Peminjaman (Diproses)</h3>
+            <div class="card" style="padding:0; overflow:hidden;">
+                <table class="data-table">
+                    <thead><tr><th>Peminjam</th><th>Kendaraan</th><th>Status</th><th>Waktu Mulai</th><th>Waktu Selesai</th></tr></thead>
+                    <tbody id="processed-table-body">
+                         <tr><td colspan="5" style="text-align:center; padding:40px;">Memuat data...</td></tr>
+                    </tbody>
+                </table>
+            </div>
         </main>
     </div>
 
@@ -40,6 +49,7 @@
         const token = localStorage.getItem('token');
 
         async function loadRentals() {
+            // Load Pending
             try {
                 const res = await fetch('/api/rentals/pending', { headers: { 'Authorization': 'Bearer ' + token } });
                 const data = await res.json();
@@ -47,23 +57,61 @@
                 const tbody = document.getElementById('rentals-table-body');
                 if(data.length === 0) {
                     tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 40px; color:var(--muted-foreground)">Tidak ada permintaan baru.</td></tr>';
+                } else {
+                    tbody.innerHTML = data.map(r => `
+                        <tr>
+                            <td><b>${r.username || 'Unknown'}</b></td>
+                            <td>${r.name}<br><span style="color:var(--muted-foreground); font-size:12px;">${r.plate_number}</span></td>
+                            <td><span class="badge badge-warning">${r.status}</span></td>
+                            <td>${new Date(r.created_at).toLocaleString('id-ID')}</td>
+                            <td>
+                                <div class="action-bt-group">
+                                    <button class="action-btn btn-green" onclick="processRental('${r.id}', 'APPROVE')" title="Terima"><i class="ph ph-check"></i></button>
+                                    <button class="action-btn btn-red" onclick="processRental('${r.id}', 'REJECT')" title="Tolak"><i class="ph ph-x"></i></button>
+                                </div>
+                            </td>
+                        </tr>
+                    `).join('');
+                }
+            } catch(e) { console.error(e); }
+
+            // Load Processed (History)
+            loadProcessedRentals();
+        }
+
+        async function loadProcessedRentals() {
+            try {
+                const res = await fetch('/api/rentals/processed', { headers: { 'Authorization': 'Bearer ' + token } });
+                const data = await res.json();
+                
+                const tbody = document.getElementById('processed-table-body');
+                if(data.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 40px; color:var(--muted-foreground)">Belum ada riwayat peminjaman.</td></tr>';
                     return;
                 }
 
-                tbody.innerHTML = data.map(r => `
-                    <tr>
-                        <td><b>${r.username || 'Unknown'}</b></td>
-                        <td>${r.name}<br><span style="color:var(--muted-foreground); font-size:12px;">${r.plate_number}</span></td>
-                        <td><span class="badge badge-warning">${r.status}</span></td>
-                        <td>${new Date(r.created_at).toLocaleString('id-ID')}</td>
-                        <td>
-                            <div class="action-bt-group">
-                                <button class="action-btn btn-green" onclick="processRental('${r.id}', 'APPROVE')" title="Terima"><i class="ph ph-check"></i></button>
-                                <button class="action-btn btn-red" onclick="processRental('${r.id}', 'REJECT')" title="Tolak"><i class="ph ph-x"></i></button>
-                            </div>
-                        </td>
-                    </tr>
-                `).join('');
+                tbody.innerHTML = data.map(r => {
+                    let badgeClass = 'badge';
+                    if(r.status === 'ACTIVE') badgeClass = 'badge badge-success';
+                    if(r.status === 'COMPLETED') badgeClass = 'badge'; // Default gray
+                    if(r.status === 'REJECTED') badgeClass = 'badge badge-warning'; // Or red
+
+                    // Custom styling for rejected
+                    let statusStyle = '';
+                    if(r.status === 'REJECTED') statusStyle = 'background:#fee2e2; color:#ef4444; border-color:#fecaca;';
+                    if(r.status === 'COMPLETED') statusStyle = 'background:#f4f4f5; color:#52525b; border-color:#e4e4e7;';
+                    if(r.status === 'ACTIVE') statusStyle = 'background:#dcfce7; color:#166534; border-color:#bbf7d0;';
+
+                    return `
+                        <tr>
+                            <td><b>${r.username || 'Unknown'}</b></td>
+                            <td>${r.name}<br><span style="color:var(--muted-foreground); font-size:12px;">${r.plate_number}</span></td>
+                            <td><span class="badge" style="${statusStyle}">${r.status}</span></td>
+                            <td>${new Date(r.created_at).toLocaleString('id-ID')}</td>
+                            <td>${r.end_time ? new Date(r.end_time).toLocaleString('id-ID') : '-'}</td>
+                        </tr>
+                    `;
+                }).join('');
             } catch(e) { console.error(e); }
         }
 

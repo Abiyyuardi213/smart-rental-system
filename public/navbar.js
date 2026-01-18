@@ -66,7 +66,16 @@ function logout() {
         if (result.isConfirmed) {
             localStorage.removeItem('token');
             localStorage.removeItem('accountStatus');
-            window.location.href = '/';
+            
+            Swal.fire({
+                icon: 'success',
+                title: 'Berhasil Keluar',
+                text: 'Sampai jumpa lagi!',
+                timer: 1500,
+                showConfirmButton: false
+            }).then(() => {
+                window.location.href = '/';
+            });
         }
     });
 }

@@ -44,7 +44,45 @@ function initAdminLayout(activePage) {
     if (container) {
         container.innerHTML = sidebarHTML;
         
-        // Mobile Toggle logic could go here
+        // Mobile Toggle Logic
+        const overlay = document.createElement('div');
+        overlay.className = 'sidebar-overlay';
+        overlay.onclick = () => document.querySelector('.admin-sidebar').classList.remove('show');
+        document.body.appendChild(overlay);
+
+        // Inject Menu Button into .admin-main
+        const main = document.querySelector('.admin-main');
+        if (main) {
+            const menuBtn = document.createElement('button');
+            menuBtn.className = 'mobile-menu-btn';
+            menuBtn.innerHTML = '<i class="ph ph-list"></i>';
+            menuBtn.onclick = () => {
+                document.querySelector('.admin-sidebar').classList.add('show');
+                overlay.classList.add('show');
+            };
+            
+            // Insert before header or as first child
+            main.insertBefore(menuBtn, main.firstChild);
+
+            // Close Logic for Overlay
+            overlay.onclick = () => {
+                document.querySelector('.admin-sidebar').classList.remove('show');
+                overlay.classList.remove('show');
+            };
+        }
+
+        // Add Close Button to Sidebar Brand
+        const brand = document.querySelector('.sidebar-brand');
+        if (brand) {
+            const closeBtn = document.createElement('button');
+            closeBtn.className = 'sidebar-close-btn';
+            closeBtn.innerHTML = '<i class="ph ph-x"></i>';
+            closeBtn.onclick = () => {
+                document.querySelector('.admin-sidebar').classList.remove('show');
+                overlay.classList.remove('show');
+            };
+            brand.appendChild(closeBtn);
+        }
     }
 
     // 3. Set Active State
@@ -66,7 +104,16 @@ function logout() {
     }).then((result) => {
         if (result.isConfirmed) {
             localStorage.removeItem('token');
-            window.location.href = '/';
+            
+            Swal.fire({
+                icon: 'success',
+                title: 'Logout Berhasil',
+                text: 'Sesi admin telah berakhir.',
+                timer: 1500,
+                showConfirmButton: false
+            }).then(() => {
+                window.location.href = '/';
+            });
         }
     });
 }

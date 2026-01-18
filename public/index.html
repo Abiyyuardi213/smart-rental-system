@@ -6,6 +6,7 @@
     <title>Login - Smart Rental</title>
     <link rel="stylesheet" href="main.css">
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <style>
         /* Shadcn / Tailwind System Inspired */
         :root {
@@ -34,7 +35,6 @@
         body {
             margin: 0;
             padding: 0;
-            font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
             background-color: var(--background);
             color: var(--foreground);
             height: 100vh;
@@ -401,22 +401,34 @@
                 
                 if (res.ok) {
                     btn.innerHTML = `Berhasil! Login...`;
-                    setTimeout(() => {
+                    
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Registrasi Berhasil!',
+                        text: 'Silakan login dengan akun baru Anda.',
+                        confirmButtonColor: '#10b981',
+                        timer: 2000,
+                        timerProgressBar: true
+                    }).then(() => {
                          toggleForm();
                          // Pre-fill username
                          document.getElementById('user').value = username;
-                         document.getElementById('error-msg').classList.add('visible');
-                         document.getElementById('error-msg').style.background = '#dcfce7'; // green-100
-                         document.getElementById('error-msg').style.borderColor = '#bbf7d0'; // green-200
-                         document.getElementById('error-msg').style.color = '#15803d'; // green-700
-                         document.getElementById('error-text').innerText = "Registrasi Berhasil! Silakan Login.";
                          btn.innerHTML = `Daftar Akun`;
                          btn.disabled = false;
-                    }, 1000);
+                    });
+
                 } else {
                     throw new Error(data.message);
                 }
             } catch (e) {
+                // Show error with SweetAlert or fallback to inline
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Registrasi Gagal',
+                    text: e.message,
+                    confirmButtonColor: '#ef4444'
+                });
+                
                 errText.innerText = e.message;
                 errBox.classList.add('visible');
                 btn.innerHTML = `Daftar Akun`;
@@ -466,14 +478,44 @@
                         localStorage.removeItem('accountStatus');
                     }
 
+                    // SweetAlert Notification
+                    const Toast = Swal.mixin({
+                        toast: true,
+                        position: 'top-end',
+                        showConfirmButton: false,
+                        timer: 2000,
+                        timerProgressBar: true,
+                        didOpen: (toast) => {
+                            toast.addEventListener('mouseenter', Swal.stopTimer)
+                            toast.addEventListener('mouseleave', Swal.resumeTimer)
+                        }
+                    });
+
+                    Toast.fire({
+                        icon: 'success',
+                        title: 'Login Berhasil!',
+                        text: `Selamat datang, ${data.name}`
+                    });
+
                     setTimeout(() => {
                         window.location.href = (data.role === 'ADMIN') ? '/admin.html' : '/peminjam.html';
-                    }, 500);
+                    }, 1500);
                 } else {
                     throw new Error(data.message || "Username atau password salah");
                 }
             } catch (e) {
                 // Error state
+                // Use SweetAlert for error too for consistency
+                Swal.fire({
+                    toast: true,
+                    position: 'top-end',
+                    icon: 'error',
+                    title: 'Login Gagal',
+                    text: e.message || "Terjadi kesalahan koneksi",
+                    showConfirmButton: false,
+                    timer: 3000
+                });
+
                 errText.innerText = e.message || "Terjadi kesalahan koneksi";
                 errBox.classList.add('visible');
                 

@@ -367,6 +367,21 @@ app.get('/api/rentals/pending', async (req, res) => {
     );
     res.json(rows);
 });
+app.get('/api/rentals/processed', async (req, res) => {
+    try {
+        const [rows] = await pool.query(
+            `SELECT r.id, u.username, c.name, c.plate_number, r.status, r.created_at, r.end_time 
+             FROM rentals r 
+             JOIN users u ON r.user_id = u.id 
+             JOIN cars c ON r.car_id = c.id 
+             WHERE r.status != 'PENDING' 
+             ORDER BY r.created_at DESC`
+        );
+        res.json(rows);
+    } catch (e) {
+        res.status(500).json({ message: e.message });
+    }
+});
 
 app.post('/api/rentals/approve', async (req, res) => {
     const { rental_id, action } = req.body;

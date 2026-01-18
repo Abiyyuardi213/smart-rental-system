@@ -1,4 +1,7 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
 /* ShadCN / Tailwind System Inspired Variables */
+
 :root {
     --background: #f8f9fa;
     --foreground: #09090b;
@@ -266,7 +269,7 @@ body {
     padding: 24px 0;
     position: fixed;
     top: 0; bottom: 0; left: 0;
-    z-index: 100;
+    z-index: 2000;
     transition: transform 0.3s ease;
 }
 
@@ -374,8 +377,68 @@ body {
 }
 
 /* Mobile Admin */
+/* Mobile Admin */
 @media (max-width: 1024px) {
-    .admin-sidebar { transform: translateX(-100%); }
+    .admin-sidebar { 
+        transform: translateX(-100%); 
+        box-shadow: 4px 0 24px rgba(0,0,0,0.1);
+    }
     .admin-sidebar.show { transform: translateX(0); }
-    .admin-main { margin-left: 0; padding: 20px; }
+    .admin-main { margin-left: 0; padding: 20px; padding-top: 70px; } /* Added top padding for menu btn */
+
+    .mobile-menu-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 40px; height: 40px;
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        position: absolute;
+        top: 20px; left: 20px;
+        z-index: 1500;
+        cursor: pointer;
+        font-size: 24px;
+        color: var(--foreground);
+    }
+
+    .sidebar-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.5);
+        z-index: 1999;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.3s;
+        backdrop-filter: blur(2px);
+    }
+    .sidebar-overlay.show {
+        opacity: 1;
+        pointer-events: auto;
+    }
+
+    .sidebar-close-btn {
+        margin-left: auto;
+        background: transparent;
+        border: none;
+        color: var(--muted-foreground);
+        font-size: 20px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 32px; height: 32px;
+        border-radius: var(--radius);
+    }
+    .sidebar-close-btn:hover {
+        background: var(--secondary);
+        color: var(--foreground);
+    }
+}
+
+/* Hide mobile elements on desktop */
+@media (min-width: 1025px) {
+    .mobile-menu-btn, .sidebar-overlay, .sidebar-close-btn {
+        display: none !important;
+    }
 }
